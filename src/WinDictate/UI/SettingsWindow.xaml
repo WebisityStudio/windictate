@@ -1,0 +1,94 @@
+<Window x:Class="WinDictate.UI.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WinDictate Settings" Height="640" Width="540"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI" FontSize="13"
+        ResizeMode="CanMinimize" Background="#FAFAFA">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="WinDictate" FontSize="20" FontWeight="Bold"/>
+                <TextBlock x:Name="SubtitleText" Text="Local push-to-talk dictation" Foreground="#666" Margin="0,0,0,16"/>
+
+                <GroupBox Header="Hotkey" Padding="10" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Hold these keys together, then speak. Release to insert." Foreground="#666" Margin="0,0,0,6"/>
+                        <ComboBox x:Name="HotkeyBox" Width="220" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Ctrl+Alt"/>
+                            <ComboBoxItem Content="Ctrl+Shift"/>
+                            <ComboBoxItem Content="Ctrl+Win"/>
+                            <ComboBoxItem Content="Alt+Shift"/>
+                            <ComboBoxItem Content="Win+Alt"/>
+                        </ComboBox>
+                        <TextBlock Text="Minimum hold before recording starts (ms) — avoids accidental triggers:" Foreground="#666" Margin="0,10,0,2"/>
+                        <TextBox x:Name="MinHoldBox" Width="100" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="Speech model (runs locally)" Padding="10" Margin="0,0,0,12">
+                    <StackPanel>
+                        <ComboBox x:Name="ModelBox" Width="280" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="tiny.en — fastest, lowest accuracy (~75 MB)"/>
+                            <ComboBoxItem Content="base.en — fast (~142 MB)"/>
+                            <ComboBoxItem Content="small.en — balanced, recommended (~466 MB)"/>
+                            <ComboBoxItem Content="medium.en — accurate, slower (~1.5 GB)"/>
+                            <ComboBoxItem Content="large-v3-turbo — best, needs a strong PC (~1.6 GB)"/>
+                        </ComboBox>
+                        <TextBlock Text="Model downloads once on first use, then works fully offline." Foreground="#666" Margin="0,6,0,0"/>
+                        <TextBlock x:Name="ModelStatusText" Text="" Foreground="#0A7" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="Microphone" Padding="10" Margin="0,0,0,12">
+                    <ComboBox x:Name="MicBox" Width="320" HorizontalAlignment="Left"/>
+                </GroupBox>
+
+                <GroupBox Header="Text insertion" Padding="10" Margin="0,0,0,12">
+                    <StackPanel>
+                        <RadioButton x:Name="PasteRadio" Content="Paste (clipboard, fast, restores your clipboard)" Margin="0,2"/>
+                        <RadioButton x:Name="TypeRadio" Content="Type (simulated keystrokes, never touches clipboard)" Margin="0,2"/>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="Custom words / acronyms (optional)" Padding="10" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Comma-separated terms to bias recognition, e.g. HSBC, KYC, Onboarding:" Foreground="#666" Margin="0,0,0,4"/>
+                        <TextBox x:Name="VocabBox" Height="44" TextWrapping="Wrap" AcceptsReturn="True"/>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="AI cleanup (optional, can stay off)" Padding="10" Margin="0,0,0,12">
+                    <StackPanel>
+                        <CheckBox x:Name="CleanupEnabled" Content="Clean up punctuation and filler words via an AI endpoint"/>
+                        <TextBlock Text="Endpoint base URL (OpenAI-compatible, e.g. an internal gateway):" Foreground="#666" Margin="0,8,0,2"/>
+                        <TextBox x:Name="CleanupUrl"/>
+                        <TextBlock Text="Model:" Foreground="#666" Margin="0,8,0,2"/>
+                        <TextBox x:Name="CleanupModel"/>
+                        <TextBlock Text="API key (stored locally in settings.json; leave blank for keyless gateways):" Foreground="#666" Margin="0,8,0,2"/>
+                        <PasswordBox x:Name="CleanupKey"/>
+                        <TextBlock Text="If cleanup fails or times out, the raw local transcript is used instead." Foreground="#666" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="Privacy" Padding="10" Margin="0,0,0,4">
+                    <StackPanel>
+                        <CheckBox x:Name="LogTranscripts" Content="Save transcript history locally (off by default)"/>
+                        <TextBlock Text="When off, no audio or transcript text is ever written to disk." Foreground="#666" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </GroupBox>
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button x:Name="OpenDataButton" Content="Open data folder" Width="130" Height="32" Margin="0,0,8,0"/>
+            <Button x:Name="SaveButton" Content="Save" Width="90" Height="32" Margin="0,0,8,0" IsDefault="True"/>
+            <Button x:Name="CloseButton" Content="Close" Width="90" Height="32"/>
+        </StackPanel>
+    </Grid>
+</Window>

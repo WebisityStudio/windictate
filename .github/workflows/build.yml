@@ -1,0 +1,59 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore src/WinDictate/WinDictate.csproj
+
+      - name: Publish (self-contained win-x64)
+        run: >
+          dotnet publish src/WinDictate/WinDictate.csproj
+          -c Release -r win-x64 --self-contained true
+          /p:PublishSingleFile=false
+          -o publish/WinDictate
+
+      - name: Stage docs alongside the binary
+        shell: pwsh
+        run: |
+          Copy-Item README.md publish/WinDictate/README.md
+          Copy-Item docs/QUICKSTART.md publish/WinDictate/QUICKSTART.md
+          Copy-Item LICENSE publish/WinDictate/LICENSE.txt
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path publish/WinDictate/* -DestinationPath WinDictate-win-x64.zip -Force
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinDictate-win-x64
+          path: WinDictate-win-x64.zip
+          retention-days: 30
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: WinDictate-win-x64.zip
+          generate_release_notes: true

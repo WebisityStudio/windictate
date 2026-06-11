@@ -1,0 +1,19 @@
+# Build output
+bin/
+obj/
+publish/
+publish-test/
+*.user
+
+# Rider / VS
+.idea/
+.vs/
+
+# macOS
+.DS_Store
+
+# Local model files (downloaded at runtime, never committed)
+*.bin
+
+# Logs
+*.log
