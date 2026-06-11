@@ -51,7 +51,7 @@
 
                 <GroupBox Header="Text insertion" Padding="10" Margin="0,0,0,12">
                     <StackPanel>
-                        <RadioButton x:Name="PasteRadio" Content="Paste (clipboard, fast, restores your clipboard)" Margin="0,2"/>
+                        <RadioButton x:Name="PasteRadio" Content="Paste (clipboard, fast, restores text clipboard)" Margin="0,2"/>
                         <RadioButton x:Name="TypeRadio" Content="Type (simulated keystrokes, never touches clipboard)" Margin="0,2"/>
                     </StackPanel>
                 </GroupBox>

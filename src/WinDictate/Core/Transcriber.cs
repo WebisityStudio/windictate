@@ -16,6 +16,8 @@ public sealed class Transcriber : IDisposable
     public static string ModelsDir => Path.Combine(AppSettings.DataDir, "models");
     public static string ModelPath(string model) => Path.Combine(ModelsDir, $"ggml-{model}.bin");
 
+    // Infinite timeout on the client itself; we enforce a per-read inactivity
+    // window inside the download loop so a mid-transfer TCP stall does not hang forever.
     private static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };
 
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -67,9 +69,23 @@ public sealed class Transcriber : IDisposable
             var buffer = new byte[1 << 16];
             long done = 0;
             long lastPercent = -1;
-            int read;
-            while ((read = await source.ReadAsync(buffer, ct)) > 0)
+            while (true)
             {
+                // 30-second inactivity window per read: a VPN drop or proxy
+                // black-hole mid-download would otherwise stall source.ReadAsync
+                // forever and permanently hold the gate (bug: stuck _busy).
+                using var readCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                readCts.CancelAfter(TimeSpan.FromSeconds(30));
+                int read;
+                try
+                {
+                    read = await source.ReadAsync(buffer, readCts.Token);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    throw new IOException($"Model download stalled (no data for 30 s). Check your network connection and retry.");
+                }
+                if (read == 0) break;
                 await target.WriteAsync(buffer.AsMemory(0, read), ct);
                 done += read;
                 if (total > 0)
@@ -89,9 +105,10 @@ public sealed class Transcriber : IDisposable
 
     public async Task<string> TranscribeAsync(Stream wav, AppSettings settings, CancellationToken ct = default)
     {
-        if (_factory == null) throw new InvalidOperationException("Speech model is not loaded yet");
-
         await _gate.WaitAsync(ct);
+        // Check inside the gate: EnsureReadyAsync sets _factory=null before
+        // loading a new model, so a mid-swap check outside the gate can race.
+        if (_factory == null) throw new InvalidOperationException("Speech model is not loaded yet");
         try
         {
             var builder = _factory.CreateBuilder();

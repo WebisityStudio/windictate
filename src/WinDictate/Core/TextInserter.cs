@@ -11,16 +11,19 @@ namespace WinDictate.Core;
 /// </summary>
 public static class TextInserter
 {
-    public static async Task InsertAsync(string text, AppSettings settings, Dispatcher dispatcher)
+    /// <returns>true if text was inserted; false if modifier keys were still held after 1.5 s.</returns>
+    public static async Task<bool> InsertAsync(string text, AppSettings settings, Dispatcher dispatcher)
     {
         // If the user still physically holds Ctrl/Alt from the hotkey, sending
-        // Ctrl+V now would become Ctrl+Alt+V. Wait for a clean keyboard first.
-        await WaitForModifierReleaseAsync(1500);
+        // Ctrl+V now would become Ctrl+Alt+V (or arbitrary shortcuts in type mode).
+        // Abort rather than fire the wrong shortcut into the target app.
+        if (!await WaitForModifierReleaseAsync(1500))
+            return false;
 
         if (string.Equals(settings.InsertMode, "type", StringComparison.OrdinalIgnoreCase))
         {
             NativeMethods.SendUnicodeText(text);
-            return;
+            return true;
         }
 
         string? previous = null;
@@ -60,17 +63,19 @@ public static class TextInserter
                 Logger.Warn("Clipboard restore failed: " + ex.Message);
             }
         });
+        return true;
     }
 
-    private static async Task WaitForModifierReleaseAsync(int timeoutMs)
+    private static async Task<bool> WaitForModifierReleaseAsync(int timeoutMs)
     {
         int[] modifiers = { 0x10, 0x11, 0x12, 0x5B, 0x5C }; // Shift, Ctrl, Alt, LWin, RWin
         var sw = Stopwatch.StartNew();
         while (sw.ElapsedMilliseconds < timeoutMs)
         {
             bool anyDown = modifiers.Any(vk => (NativeMethods.GetAsyncKeyState(vk) & 0x8000) != 0);
-            if (!anyDown) return;
+            if (!anyDown) return true;
             await Task.Delay(15);
         }
+        return false;
     }
 }

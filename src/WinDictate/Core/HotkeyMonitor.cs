@@ -71,14 +71,19 @@ public sealed class HotkeyMonitor
             names = new List<string> { "Ctrl", "Alt" };
         }
 
+        bool sessionWasActive;
         lock (_sync)
         {
+            sessionWasActive = _session;
             _required = required;
             _down.Clear();
             _session = false;
             _poisoned = false;
             ActiveHotkeyText = string.Join("+", names);
         }
+        // Cancel any in-progress dictation that was started under the old config.
+        if (sessionWasActive)
+            SessionEnded?.Invoke(true);
     }
 
     public void OnKeyEvent(int vk, bool down)

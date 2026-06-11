@@ -217,7 +217,12 @@ public sealed class DictationController : IDisposable
 
             text = text.Trim();
             await ShowStatus("Inserting…");
-            await TextInserter.InsertAsync(text, _settings, _dispatcher);
+            bool inserted = await TextInserter.InsertAsync(text, _settings, _dispatcher);
+            if (!inserted)
+            {
+                await ShowFlash("Release keys then re-dictate", false);
+                return;
+            }
 
             if (_settings.LogTranscripts) AppendHistory(text, rec.DurationSeconds);
 

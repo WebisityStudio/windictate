@@ -61,6 +61,12 @@ public partial class App : Application
 
         _hook = new KeyboardHook();
         _hook.KeyEvent += (vk, down) => _hotkeys!.OnKeyEvent(vk, down);
+
+        // Stop recording if the workstation locks or disconnects — the key-up
+        // events land on the secure desktop and are never delivered, so without
+        // this the mic would keep capturing the room until MaxRecordSeconds.
+        Microsoft.Win32.SystemEvents.SessionSwitch += OnSessionSwitch;
+
         try
         {
             _hook.Install();
@@ -142,6 +148,17 @@ public partial class App : Application
         win.Activate();
     }
 
+    private void OnSessionSwitch(object sender, Microsoft.Win32.SessionSwitchEventArgs e)
+    {
+        if (e.Reason is Microsoft.Win32.SessionSwitchReason.SessionLock
+                     or Microsoft.Win32.SessionSwitchReason.RemoteDisconnect
+                     or Microsoft.Win32.SessionSwitchReason.ConsoleDisconnect)
+        {
+            _hotkeys?.Reset();
+            _controller?.OnSessionEnded(true);
+        }
+    }
+
     private bool _downloadNotified;
 
     private void OnStatus(string status)
@@ -181,6 +198,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         Logger.Info("Shutting down");
+        Microsoft.Win32.SystemEvents.SessionSwitch -= OnSessionSwitch;
         if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
         _hook?.Dispose();
         _controller?.Dispose();
