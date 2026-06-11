@@ -1,6 +1,6 @@
-# WinDictate — Roadmap
+# WinDictate - Roadmap
 
-## v0.1 (current) — proof of concept
+## v0.1 (current) - proof of concept
 - Global hold-to-talk hotkey (low-level keyboard hook)
 - Local microphone capture (NAudio, 16 kHz mono, in memory)
 - Local transcription (whisper.cpp via Whisper.net), model auto-download
@@ -9,8 +9,9 @@
 - System-tray app, settings window, JSON config
 - Optional AI cleanup via OpenAI-compatible endpoint
 - Privacy defaults: no audio on disk, no history, no telemetry
+- Unit-tested hotkey state machine (AltGr, secure-desktop self-heal), run in Windows CI
 
-## v0.2 — usability
+## v0.2 - usability
 - Configurable overlay position and size
 - Per-app insertion preference (paste vs type)
 - Retry / re-insert last transcript
@@ -18,16 +19,16 @@
 - First-run wizard (mic test, model pick, hotkey choice)
 - Optional GPU acceleration (CUDA / Vulkan whisper runtimes) where available
 
-## v0.3 — enterprise controls
+## v0.3 - enterprise controls
 - Machine-level policy file (HKLM / ProgramData) overriding user settings
 - "Internal gateway only" lock for cleanup
 - Disable-history and disable-download enforcement
 - Centrally managed custom dictionary
-- Audit events (counts, durations — no content) to a log/SIEM target
+- Audit events (counts, durations - no content) to a log/SIEM target
 - MSI packaging + Intune/SCCM guidance
 - Code signing
 
-## v0.4 — advanced cleanup & formatting
+## v0.4 - advanced cleanup & formatting
 - Formatting presets (email, meeting notes, CRM note, bullet list)
 - Tone presets via the cleanup model
 - Streaming/partial transcription for lower perceived latency
@@ -38,4 +39,4 @@
 - Endpoint-security tools may block the low-level keyboard hook
 - No GPU acceleration in the default CPU runtime
 - Latency scales with model size and CPU; `small.en` is the balance point
-- Insertion targets whatever has focus — no per-field validation
+- Insertion targets whatever has focus - no per-field validation

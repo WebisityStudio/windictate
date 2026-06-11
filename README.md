@@ -1,7 +1,9 @@
 # WinDictate
 
+[![build](https://github.com/WebisityStudio/windictate/actions/workflows/build.yml/badge.svg)](https://github.com/WebisityStudio/windictate/actions/workflows/build.yml)
+
 **Local, push-to-talk voice dictation for Windows.** Hold a hotkey anywhere on your
-PC, speak, release — your words are typed into whatever app has focus (Outlook,
+PC, speak, release - your words are typed into whatever app has focus (Outlook,
 Word, Teams, a CRM field, a browser). Speech-to-text runs **entirely on the
 device** using an on-board Whisper model. No cloud account, no API key, no audio
 leaving the machine.
@@ -15,7 +17,7 @@ organisation-approved AI gateway if one is available.
 
 ## Why this exists
 
-Plenty of people type all day — meeting notes, emails, CRM entries — when they
+Plenty of people type all day - meeting notes, emails, CRM entries - when they
 could dictate far faster. The built-in Windows dictation is clumsy and the good
 commercial tools send your audio to a vendor cloud, which is a non-starter in a
 regulated environment. WinDictate keeps the whole speech path on the laptop.
@@ -26,8 +28,8 @@ regulated environment. WinDictate keeps the whole speech path on the laptop.
 - **Fully local transcription** via [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (through the Whisper.net bindings). Works with no internet once the model is present.
 - **Pastes into the focused app** using the clipboard (and restores your previous clipboard immediately) or, optionally, by simulating keystrokes so the clipboard is never touched.
 - **A small recording overlay** shows it is listening, a live mic level, and which window it will insert into.
-- **System-tray app** — runs quietly, no main window. Right-click for settings.
-- **Optional AI cleanup** (off by default): fix punctuation, capitalisation and filler words via any OpenAI-compatible endpoint — the public API *or* an internal gateway URL. If it fails or times out, the raw local transcript is used.
+- **System-tray app** - runs quietly, no main window. Right-click for settings.
+- **Optional AI cleanup** (off by default): fix punctuation, capitalisation and filler words via any OpenAI-compatible endpoint - the public API *or* an internal gateway URL. If it fails or times out, the raw local transcript is used.
 - **Privacy-first defaults**: no audio is ever written to disk; no transcript history unless you switch it on.
 
 ## How it works
@@ -49,7 +51,7 @@ endpoint.
 ## Install
 
 1. Download `WinDictate-win-x64.zip` from the [Releases](../../releases) page (or the latest CI build under **Actions**).
-2. Unzip anywhere (e.g. `C:\Tools\WinDictate`). It is self-contained — **no .NET install required**.
+2. Unzip anywhere (e.g. `C:\Tools\WinDictate`). It is self-contained - **no .NET install required**.
 3. Run `WinDictate.exe`. A microphone icon appears in the system tray.
 4. On first use it downloads the speech model once (default `small.en`, ~466 MB) into `%APPDATA%\WinDictate\models`. After that it works offline.
 
@@ -79,11 +81,11 @@ languages, set the language to `auto` in settings and use a non-`.en` model.
 
 ## Privacy & enterprise notes
 
-- **Audio** is held in memory only and discarded after transcription — never written to disk.
+- **Audio** is held in memory only and discarded after transcription - never written to disk.
 - **Transcript history** is off by default. When enabled it is a local TSV file in `%APPDATA%\WinDictate`; nothing leaves the machine.
 - **Cleanup** is opt-in. With it off, WinDictate makes **no network calls at all** (after the one-time model download).
 - **No API keys are required** for the core product. A key is only needed if you point cleanup at an endpoint that requires one.
-- The clipboard, in paste mode, is saved in memory and restored within a few hundred milliseconds; its contents are never logged.
+- The clipboard, in paste mode, is saved in memory and restored within a few hundred milliseconds; its contents are never logged. Only text is restored: if the clipboard held an image or files, it is cleared after insertion rather than left holding the transcript. Use the "type" insertion mode to avoid the clipboard entirely.
 
 See [docs/ENTERPRISE.md](docs/ENTERPRISE.md) for a deployment and governance summary
 aimed at IT / security teams.
@@ -106,7 +108,7 @@ a starting point, not yet a hardened production release. See
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).
 
 Speech recognition by [whisper.cpp](https://github.com/ggerganov/whisper.cpp) /
 [Whisper.net](https://github.com/sandrohanea/whisper.net); audio capture by

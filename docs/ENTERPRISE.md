@@ -1,4 +1,4 @@
-# WinDictate — Notes for IT / Security
+# WinDictate - Notes for IT / Security
 
 A one-page summary for the team being asked to evaluate or deploy this.
 
@@ -12,14 +12,14 @@ the focused application. Speech-to-text runs on-device.
 
 | Stage              | Where it runs        | Data involved                       |
 |--------------------|----------------------|-------------------------------------|
-| Hotkey detection   | Local (kernel hook)  | Key up/down events, not logged      |
+| Hotkey detection   | Local (user-mode hook) | Key up/down events, not logged    |
 | Microphone capture | Local                | Audio in memory only, never on disk |
 | Transcription      | Local (whisper.cpp)  | Audio → text, on-device             |
 | Cleanup (optional) | Network, if enabled  | Transcript text to chosen endpoint  |
 | Insertion          | Local                | Text via clipboard or keystrokes    |
 
 With cleanup **off** (the default), the application makes **no network calls**
-after the one-time model download — and that download can be eliminated entirely
+after the one-time model download - and that download can be eliminated entirely
 by pre-staging the model file (see below).
 
 ## Privacy posture (defaults)
@@ -38,7 +38,7 @@ by pre-staging the model file (see below).
 
 ## Deployment
 
-- Self-contained build — no .NET runtime install needed on endpoints.
+- Self-contained build - no .NET runtime install needed on endpoints.
 - Ships as a folder (zip). Can be wrapped in MSI/Intune for managed rollout.
 - Settings live in `%APPDATA%\WinDictate\settings.json` (per-user). A managed default
   can be pushed by deploying a pre-populated `settings.json`.
@@ -46,7 +46,7 @@ by pre-staging the model file (see below).
 
 ## Things a security review will want to confirm
 
-- The global keyboard hook (`WH_KEYBOARD_LL`) is **passive** — it observes modifier
+- The global keyboard hook (`WH_KEYBOARD_LL`) is **passive** - it observes modifier
   keys to detect the hotkey and never swallows or records keystrokes. Injected
   (synthetic) events are ignored. Source: `src/WinDictate/Core/KeyboardHook.cs`.
 - Clipboard handling saves and restores the prior clipboard in memory and does not

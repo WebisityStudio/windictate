@@ -26,19 +26,19 @@
                             <ComboBoxItem Content="Alt+Shift"/>
                             <ComboBoxItem Content="Win+Alt"/>
                         </ComboBox>
-                        <TextBlock Text="Minimum hold before recording starts (ms) — avoids accidental triggers:" Foreground="#666" Margin="0,10,0,2"/>
+                        <TextBlock Text="Ignore holds shorter than this (ms), so accidental taps do nothing:" Foreground="#666" Margin="0,10,0,2"/>
                         <TextBox x:Name="MinHoldBox" Width="100" HorizontalAlignment="Left"/>
                     </StackPanel>
                 </GroupBox>
 
                 <GroupBox Header="Speech model (runs locally)" Padding="10" Margin="0,0,0,12">
                     <StackPanel>
-                        <ComboBox x:Name="ModelBox" Width="280" HorizontalAlignment="Left">
-                            <ComboBoxItem Content="tiny.en — fastest, lowest accuracy (~75 MB)"/>
-                            <ComboBoxItem Content="base.en — fast (~142 MB)"/>
-                            <ComboBoxItem Content="small.en — balanced, recommended (~466 MB)"/>
-                            <ComboBoxItem Content="medium.en — accurate, slower (~1.5 GB)"/>
-                            <ComboBoxItem Content="large-v3-turbo — best, needs a strong PC (~1.6 GB)"/>
+                        <ComboBox x:Name="ModelBox" Width="300" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="tiny.en (fastest, lowest accuracy, ~75 MB)"/>
+                            <ComboBoxItem Content="base.en (fast, ~142 MB)"/>
+                            <ComboBoxItem Content="small.en (balanced, recommended, ~466 MB)"/>
+                            <ComboBoxItem Content="medium.en (accurate, slower, ~1.5 GB)"/>
+                            <ComboBoxItem Content="large-v3-turbo (best, needs a strong PC, ~1.6 GB)"/>
                         </ComboBox>
                         <TextBlock Text="Model downloads once on first use, then works fully offline." Foreground="#666" Margin="0,6,0,0"/>
                         <TextBlock x:Name="ModelStatusText" Text="" Foreground="#0A7" Margin="0,4,0,0"/>

@@ -57,6 +57,7 @@ public partial class App : Application
         _hotkeys = new HotkeyMonitor(_settings.Hotkey);
         _hotkeys.SessionStarted += () => _controller!.OnSessionStarted();
         _hotkeys.SessionEnded += cancelled => _controller!.OnSessionEnded(cancelled);
+        _controller.MaxDurationReached += () => _hotkeys!.Reset();
 
         _hook = new KeyboardHook();
         _hook.KeyEvent += (vk, down) => _hotkeys!.OnKeyEvent(vk, down);
@@ -141,15 +142,26 @@ public partial class App : Application
         win.Activate();
     }
 
+    private bool _downloadNotified;
+
     private void OnStatus(string status)
     {
         Dispatcher.BeginInvoke(() =>
         {
             if (_tray == null) return;
-            var text = $"WinDictate — {status}";
+            var text = $"WinDictate - {status}";
             _tray.Text = text.Length > 63 ? text[..63] : text;
-            bool busy = status is "Transcribing…" or "Cleaning up…" or "Inserting…";
+            bool busy = status is "Listening…" or "Transcribing…" or "Cleaning up…" or "Inserting…"
+                        || status.StartsWith("Downloading", StringComparison.Ordinal);
             _tray.Icon = busy ? _busyIcon : _idleIcon;
+
+            if (!_downloadNotified && status.StartsWith("Downloading", StringComparison.Ordinal))
+            {
+                _downloadNotified = true;
+                _tray.ShowBalloonTip(5000, "WinDictate",
+                    "Downloading the speech model (one time). Dictation will be ready in a few minutes.",
+                    ToolTipIcon.Info);
+            }
         });
     }
 

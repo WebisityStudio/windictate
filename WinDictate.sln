@@ -1,8 +1,12 @@
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinDictate", "src\WinDictate\WinDictate.csproj", "{B7A1F2C3-4D5E-6F70-8A9B-0C1D2E3F4A5B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0CB461EE-027F-4011-BB5A-645329CC2BD5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinDictate.Tests", "tests\WinDictate.Tests\WinDictate.Tests.csproj", "{0B8784D9-1E1B-48AC-9956-60E12A6F3B45}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -14,8 +18,15 @@ Global
 		{B7A1F2C3-4D5E-6F70-8A9B-0C1D2E3F4A5B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B7A1F2C3-4D5E-6F70-8A9B-0C1D2E3F4A5B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B7A1F2C3-4D5E-6F70-8A9B-0C1D2E3F4A5B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0B8784D9-1E1B-48AC-9956-60E12A6F3B45}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0B8784D9-1E1B-48AC-9956-60E12A6F3B45}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0B8784D9-1E1B-48AC-9956-60E12A6F3B45}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0B8784D9-1E1B-48AC-9956-60E12A6F3B45}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{0B8784D9-1E1B-48AC-9956-60E12A6F3B45} = {0CB461EE-027F-4011-BB5A-645329CC2BD5}
 	EndGlobalSection
 EndGlobal

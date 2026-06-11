@@ -104,7 +104,7 @@ public partial class SettingsWindow : Window
     private static string SelectedModelFrom(ComboBoxItem? item)
     {
         var text = item?.Content?.ToString() ?? "small.en";
-        return text.Split('—')[0].Trim();
+        return text.Split(' ')[0].Trim();
     }
 
     private void SelectModel(string model)
@@ -130,7 +130,11 @@ public partial class SettingsWindow : Window
                 return;
             }
         }
-        box.SelectedIndex = 0;
+        // Keep hand-edited combos from settings.json (e.g. "RCtrl") instead of
+        // silently clobbering them with the first preset on save.
+        var custom = new ComboBoxItem { Content = value };
+        box.Items.Add(custom);
+        box.SelectedItem = custom;
     }
 
     private static void OpenDataFolder()

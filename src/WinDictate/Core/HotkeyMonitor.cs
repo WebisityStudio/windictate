@@ -15,6 +15,14 @@ public sealed class HotkeyMonitor
     public bool Enabled { get; set; } = true;
     public string ActiveHotkeyText { get; private set; } = "";
 
+    /// <summary>
+    /// Probe for the OS-level key state, used to self-heal when key-up events
+    /// were swallowed (secure desktop, UAC prompt, workstation lock, RDP focus
+    /// loss). Replaceable in tests.
+    /// </summary>
+    public Func<int, bool> PhysicalKeyCheck { get; set; } =
+        vk => (NativeMethods.GetAsyncKeyState(vk) & 0x8000) != 0;
+
     private readonly object _sync = new();
     private List<int[]> _required = new();
     private readonly HashSet<int> _down = new();
@@ -92,8 +100,16 @@ public sealed class HotkeyMonitor
 
             if (relevant)
             {
-                if (down) _down.Add(vk);
-                else _down.Remove(vk);
+                if (down)
+                {
+                    // Self-heal: forget keys whose release we never saw.
+                    _down.RemoveWhere(k => k != vk && !PhysicalKeyCheck(k));
+                    _down.Add(vk);
+                }
+                else
+                {
+                    _down.Remove(vk);
+                }
             }
 
             bool allDown = _required.All(t => t.Any(v => _down.Contains(v)));
@@ -109,10 +125,29 @@ public sealed class HotkeyMonitor
                 endedCancelled = false;
             }
 
-            if (_poisoned && _down.Count == 0) _poisoned = false;
+            if (_poisoned && _down.Count == 0 && !AnyRequiredPhysicallyDown())
+                _poisoned = false;
         }
 
         if (started) SessionStarted?.Invoke();
         if (endedCancelled.HasValue) SessionEnded?.Invoke(endedCancelled.Value);
     }
+
+    /// <summary>
+    /// Forget all key state without firing events. Used after a forced session
+    /// stop (max recording duration). If the combo is still physically held the
+    /// monitor stays poisoned until everything is released.
+    /// </summary>
+    public void Reset()
+    {
+        lock (_sync)
+        {
+            _session = false;
+            _down.Clear();
+            _poisoned = AnyRequiredPhysicallyDown();
+        }
+    }
+
+    private bool AnyRequiredPhysicallyDown() =>
+        _required.Any(t => t.Any(v => PhysicalKeyCheck(v)));
 }

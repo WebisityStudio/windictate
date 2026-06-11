@@ -8,11 +8,14 @@ namespace WinDictate.Core;
 /// <summary>
 /// Orchestrates one dictation session at a time:
 /// hotkey held -> record -> (release) -> transcribe locally -> optional cleanup -> insert.
-/// All heavy work runs off the keyboard-hook thread so the global hook never stalls.
+/// The hotkey callbacks arrive on the keyboard-hook thread and must return
+/// immediately, so everything slow (opening the microphone, Whisper, HTTP,
+/// SendInput) runs on worker threads.
 /// </summary>
 public sealed class DictationController : IDisposable
 {
-    public event Action<string>? StatusChanged; // for the tray tooltip
+    public event Action<string>? StatusChanged;  // tray tooltip / icon
+    public event Action? MaxDurationReached;     // lets the app reset the hotkey monitor
 
     private readonly Dispatcher _dispatcher;
     private readonly OverlayWindow _overlay;
@@ -20,12 +23,18 @@ public sealed class DictationController : IDisposable
     private AppSettings _settings;
 
     private readonly object _sync = new();
-    private bool _busy;             // a transcribe pipeline is running
-    private AudioRecorder? _recorder;
-    private Stopwatch? _holdTimer;
-    private string _targetTitle = "";
-    private CancellationTokenSource? _overlayDelay;
+    private Session? _current;
+    private bool _busy;        // a transcription pipeline is running
     private bool _modelWarming;
+
+    private sealed class Session
+    {
+        public readonly Stopwatch Held = Stopwatch.StartNew();
+        public Task<AudioRecorder?> StartTask = Task.FromResult<AudioRecorder?>(null);
+        public readonly CancellationTokenSource OverlayDelay = new();
+        public System.Threading.Timer? MaxTimer;
+        public bool Ended;
+    }
 
     public DictationController(Dispatcher dispatcher, OverlayWindow overlay, AppSettings settings)
     {
@@ -54,7 +63,7 @@ public sealed class DictationController : IDisposable
         catch (Exception ex)
         {
             Logger.Error("Model warm-up failed", ex);
-            StatusChanged?.Invoke("Model not ready — check log");
+            StatusChanged?.Invoke("Model not ready, check log");
         }
         finally
         {
@@ -62,86 +71,121 @@ public sealed class DictationController : IDisposable
         }
     }
 
-    // ----- Session start (hotkey held) -----
+    // ----- Hotkey held (hook thread: flip state, defer the real work) -----
 
     public void OnSessionStarted()
     {
+        Session session;
         lock (_sync)
         {
-            if (_busy || _recorder != null) return; // ignore re-entry while inserting
+            if (_busy || _current != null) return;
+            session = new Session();
+            _current = session;
+        }
+
+        string target = NativeMethods.GetForegroundWindowTitle();
+
+        session.StartTask = Task.Run<AudioRecorder?>(() =>
+        {
+            var recorder = new AudioRecorder();
+            recorder.LevelChanged += OnLevel;
             try
             {
-                _recorder = new AudioRecorder();
-                _recorder.LevelChanged += OnLevel;
-                _recorder.Start(_settings.MicDeviceIndex);
-                _holdTimer = Stopwatch.StartNew();
+                recorder.Start(_settings.MicDeviceIndex);
             }
             catch (Exception ex)
             {
                 Logger.Error("Could not start microphone", ex);
-                _recorder = null;
+                recorder.Dispose();
+                session.OverlayDelay.Cancel();
                 _dispatcher.BeginInvoke(() => _overlay.Flash("No microphone", false));
-                return;
+                return null;
             }
-        }
+            lock (_sync)
+            {
+                if (!session.Ended) return recorder;
+            }
+            // Hotkey already released before the device finished opening.
+            try { recorder.Stop(); } catch { }
+            recorder.Dispose();
+            return null;
+        });
 
-        _targetTitle = NativeMethods.GetForegroundWindowTitle();
+        int maxMs = Math.Max(5, _settings.MaxRecordSeconds) * 1000;
+        session.MaxTimer = new System.Threading.Timer(_ => OnMaxDuration(session), null, maxMs, Timeout.Infinite);
 
-        // Delay the overlay slightly so a quick accidental tap shows nothing.
-        var delay = new CancellationTokenSource();
-        _overlayDelay = delay;
+        StatusChanged?.Invoke("Listening…");
+
+        // Delay the overlay slightly so accidental taps show nothing.
+        var token = session.OverlayDelay.Token;
         _dispatcher.BeginInvoke(async () =>
         {
             try
             {
-                await Task.Delay(180, delay.Token);
-                _overlay.ShowListening(_targetTitle);
+                await Task.Delay(180, token);
+                _overlay.ShowListening(target);
             }
             catch (TaskCanceledException) { }
         });
     }
 
+    private void OnMaxDuration(Session session)
+    {
+        lock (_sync)
+        {
+            if (!ReferenceEquals(_current, session) || session.Ended) return;
+        }
+        Logger.Warn($"Recording hit the {_settings.MaxRecordSeconds}s limit, stopping");
+        MaxDurationReached?.Invoke(); // monitor forgets the held combo
+        OnSessionEnded(false);
+    }
+
     private void OnLevel(float peak) => _dispatcher.BeginInvoke(() => _overlay.SetLevel(peak));
 
-    // ----- Session end (hotkey released or cancelled) -----
+    // ----- Hotkey released or cancelled (hook thread or max-duration timer) -----
 
     public void OnSessionEnded(bool cancelled)
     {
-        AudioRecorder? recorder;
-        Stopwatch? timer;
+        Session? session;
         lock (_sync)
         {
-            recorder = _recorder;
-            timer = _holdTimer;
-            _recorder = null;
-            _holdTimer = null;
-            if (recorder == null) return;
+            session = _current;
+            _current = null;
+            if (session == null) return;
+            session.Ended = true;
             _busy = true;
         }
+        session.OverlayDelay.Cancel();
+        session.MaxTimer?.Dispose();
+        long heldMs = session.Held.ElapsedMilliseconds;
 
-        _overlayDelay?.Cancel();
-        long heldMs = timer?.ElapsedMilliseconds ?? 0;
-
-        _ = Task.Run(() => RunPipelineAsync(recorder, cancelled, heldMs));
+        _ = Task.Run(() => RunPipelineAsync(session, cancelled, heldMs));
     }
 
-    private async Task RunPipelineAsync(AudioRecorder recorder, bool cancelled, long heldMs)
+    private async Task RunPipelineAsync(Session session, bool cancelled, long heldMs)
     {
         try
         {
+            AudioRecorder? recorder = await session.StartTask;
+            if (recorder == null)
+            {
+                await HideOverlay(); // mic failure already showed its own message
+                return;
+            }
+
             RecordingResult rec;
             try { rec = recorder.Stop(); }
             finally { recorder.Dispose(); }
 
-            if (cancelled)
+            if (cancelled || heldMs < _settings.MinHoldMs)
             {
-                await ShowFlash("Cancelled", false);
+                // Quick taps and AltGr-style cancels vanish silently; a
+                // deliberate cancel of a real recording gets feedback.
+                if (cancelled && heldMs >= _settings.MinHoldMs)
+                    await ShowFlash("Cancelled", false);
+                else
+                    await HideOverlay();
                 return;
-            }
-            if (heldMs < _settings.MinHoldMs)
-            {
-                await HideOverlay();
-                return; // accidental tap
             }
             if (rec.DurationSeconds < 0.3 || rec.AverageLevel < _settings.SilenceThreshold)
             {
@@ -153,7 +197,7 @@ public sealed class DictationController : IDisposable
 
             if (!_transcriber.IsReady)
                 await _transcriber.EnsureReadyAsync(_settings.Model,
-                    new Progress<string>(async s => await ShowStatus(s)));
+                    new Progress<string>(s => _ = ShowStatus(s)));
 
             string text;
             using (var ms = new MemoryStream(rec.WavBytes))
@@ -178,12 +222,13 @@ public sealed class DictationController : IDisposable
             if (_settings.LogTranscripts) AppendHistory(text, rec.DurationSeconds);
 
             int words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+            Logger.Info($"Dictated {rec.DurationSeconds:F1}s of audio into {words} words");
             await ShowFlash($"Inserted {words} word{(words == 1 ? "" : "s")}", true);
         }
         catch (Exception ex)
         {
             Logger.Error("Dictation pipeline failed", ex);
-            await ShowFlash("Error — see log", false);
+            await ShowFlash("Error, see log", false);
         }
         finally
         {
@@ -205,13 +250,36 @@ public sealed class DictationController : IDisposable
         }
     }
 
-    private Task ShowStatus(string text) => _dispatcher.InvokeAsync(() => _overlay.ShowStatus(text)).Task;
-    private Task ShowFlash(string text, bool ok) => _dispatcher.InvokeAsync(() => _overlay.Flash(text, ok)).Task;
-    private Task HideOverlay() => _dispatcher.InvokeAsync(() => _overlay.HideOverlay()).Task;
+    private Task ShowStatus(string text)
+    {
+        StatusChanged?.Invoke(text);
+        return _dispatcher.InvokeAsync(() => _overlay.ShowStatus(text)).Task;
+    }
+
+    private Task ShowFlash(string text, bool ok) =>
+        _dispatcher.InvokeAsync(() => _overlay.Flash(text, ok)).Task;
+
+    private Task HideOverlay() =>
+        _dispatcher.InvokeAsync(() => _overlay.HideOverlay()).Task;
 
     public void Dispose()
     {
-        _recorder?.Dispose();
+        Session? session;
+        lock (_sync)
+        {
+            session = _current;
+            _current = null;
+        }
+        if (session != null)
+        {
+            session.Ended = true;
+            session.OverlayDelay.Cancel();
+            session.MaxTimer?.Dispose();
+            _ = session.StartTask.ContinueWith(t =>
+            {
+                if (t.Status == TaskStatus.RanToCompletion) t.Result?.Dispose();
+            });
+        }
         _transcriber.Dispose();
     }
 }

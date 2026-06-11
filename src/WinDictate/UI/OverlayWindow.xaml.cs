@@ -10,6 +10,10 @@ namespace WinDictate.UI;
 
 public partial class OverlayWindow : Window
 {
+    // Bumped on every state change so a stale fade-out's Completed handler
+    // can never hide an overlay that has since been shown again.
+    private int _generation;
+
     public OverlayWindow()
     {
         InitializeComponent();
@@ -29,31 +33,43 @@ public partial class OverlayWindow : Window
 
     private void PositionBottomCentre()
     {
+        UpdateLayout();
         var area = SystemParameters.WorkArea;
         Left = area.Left + (area.Width - ActualWidth) / 2;
         Top = area.Bottom - ActualHeight - 48;
     }
 
+    /// <summary>Clears any running fade, makes the window visible and opaque.</summary>
+    private void Prepare()
+    {
+        _generation++;
+        BeginAnimation(OpacityProperty, null);
+        Opacity = 1;
+        if (!IsVisible) Show();
+    }
+
     public void ShowListening(string targetTitle)
     {
+        Prepare();
         StatusText.Text = "Listening…";
         TargetText.Text = "→ " + targetTitle;
+        TargetText.Visibility = Visibility.Visible;
         Dot.Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0x4D, 0x6D));
         MeterTrack.Visibility = Visibility.Visible;
         MeterFill.Width = 0;
-        Opacity = 1;
-        Show();
         PositionBottomCentre();
         StartPulse();
     }
 
     public void ShowStatus(string text)
     {
+        Prepare();
         StatusText.Text = text;
-        TargetText.Text = "";
+        TargetText.Visibility = Visibility.Collapsed;
         Dot.Fill = new SolidColorBrush(Color.FromRgb(0x4C, 0x9A, 0xFF));
         MeterTrack.Visibility = Visibility.Collapsed;
         StopPulse();
+        PositionBottomCentre();
     }
 
     public void SetLevel(float peak)
@@ -64,23 +80,31 @@ public partial class OverlayWindow : Window
 
     public void Flash(string text, bool success)
     {
+        Prepare();
+        int generation = _generation;
         StatusText.Text = text;
-        TargetText.Text = "";
+        TargetText.Visibility = Visibility.Collapsed;
         Dot.Fill = new SolidColorBrush(success
             ? Color.FromRgb(0x4C, 0xD9, 0x64)
             : Color.FromRgb(0xFF, 0xA5, 0x00));
         MeterTrack.Visibility = Visibility.Collapsed;
         StopPulse();
+        PositionBottomCentre();
+
         var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(900))
         {
             BeginTime = TimeSpan.FromMilliseconds(700)
         };
-        fade.Completed += (_, _) => Hide();
+        fade.Completed += (_, _) =>
+        {
+            if (generation == _generation) Hide();
+        };
         BeginAnimation(OpacityProperty, fade);
     }
 
     public void HideOverlay()
     {
+        _generation++;
         StopPulse();
         BeginAnimation(OpacityProperty, null);
         Hide();

@@ -1,10 +1,10 @@
-# WinDictate — Quick start
+# WinDictate - Quick start
 
 ## 1. Run it
 
 1. Unzip `WinDictate-win-x64.zip`.
 2. Double-click `WinDictate.exe`.
-3. A blue microphone icon appears in your system tray (bottom-right, near the clock). That is the whole app — there is no main window.
+3. A blue microphone icon appears in your system tray (bottom-right, near the clock). That is the whole app - there is no main window.
 
 If Windows SmartScreen warns about an unknown publisher, click **More info →
 Run anyway**. The build is unsigned at this stage (code-signing is an enterprise
@@ -24,14 +24,14 @@ The very first time, the app downloads the speech model (~466 MB for the default
 
 Right-click the tray icon → **Settings…** (or double-click the icon).
 
-- **Hotkey** — pick the modifier combo to hold. Default Ctrl + Alt.
-- **Speech model** — smaller = faster, larger = more accurate. See the table in the README.
-- **Microphone** — choose a specific input if you have several.
+- **Hotkey** - pick the modifier combo to hold. Default Ctrl + Alt.
+- **Speech model** - smaller = faster, larger = more accurate. See the table in the README.
+- **Microphone** - choose a specific input if you have several.
 - **Text insertion**:
-  - *Paste* — fastest; uses the clipboard and restores it immediately.
-  - *Type* — simulates keystrokes; never touches the clipboard (use this if clipboard managers interfere).
-- **Custom words / acronyms** — comma-separated terms (e.g. company names, product names) to bias recognition.
-- **AI cleanup** — optional; off by default. See below.
+  - *Paste* - fastest; uses the clipboard and restores it immediately.
+  - *Type* - simulates keystrokes; never touches the clipboard (use this if clipboard managers interfere).
+- **Custom words / acronyms** - comma-separated terms (e.g. company names, product names) to bias recognition.
+- **AI cleanup** - optional; off by default. See below.
 
 ## 4. Optional: AI cleanup
 
@@ -57,8 +57,8 @@ internet:
 
 ## Troubleshooting
 
-- **Nothing happens on the hotkey** — check the tray icon is present and "Enabled" is ticked in its menu. Some endpoint-security tools block low-level keyboard hooks; the log will note if the hook failed to install.
-- **"No microphone"** — grant microphone permission (Windows Settings → Privacy → Microphone) and pick the right device in Settings.
-- **"No speech detected"** — you released too quickly, or the mic level was silent. Hold a touch longer and speak up.
-- **Text goes to the wrong window** — the overlay shows the target window title. Make sure the intended app has focus before holding the hotkey.
-- **Logs** — tray menu → **Open log**, or `%APPDATA%\WinDictate\windictate.log`. No transcript text is logged unless you enable history.
+- **Nothing happens on the hotkey** - check the tray icon is present and "Enabled" is ticked in its menu. Some endpoint-security tools block low-level keyboard hooks; the log will note if the hook failed to install.
+- **"No microphone"** - grant microphone permission (Windows Settings → Privacy → Microphone) and pick the right device in Settings.
+- **"No speech detected"** - you released too quickly, or the mic level was silent. Hold a touch longer and speak up.
+- **Text goes to the wrong window** - the overlay shows the target window title. Make sure the intended app has focus before holding the hotkey.
+- **Logs** - tray menu → **Open log**, or `%APPDATA%\WinDictate\windictate.log`. No transcript text is logged unless you enable history.
