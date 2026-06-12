@@ -38,6 +38,7 @@ public partial class SettingsWindow : Window
         VocabBox.Text = _settings.VocabularyHint;
         PasteRadio.IsChecked = !_settings.InsertMode.Equals("type", StringComparison.OrdinalIgnoreCase);
         TypeRadio.IsChecked = _settings.InsertMode.Equals("type", StringComparison.OrdinalIgnoreCase);
+        KeepClipboardBox.IsChecked = _settings.KeepInClipboard;
         CleanupEnabled.IsChecked = _settings.Cleanup.Enabled;
         CleanupUrl.Text = _settings.Cleanup.BaseUrl;
         CleanupModel.Text = _settings.Cleanup.Model;
@@ -87,6 +88,7 @@ public partial class SettingsWindow : Window
         _settings.Model = SelectedModel();
         _settings.VocabularyHint = VocabBox.Text.Trim();
         _settings.InsertMode = TypeRadio.IsChecked == true ? "type" : "paste";
+        _settings.KeepInClipboard = KeepClipboardBox.IsChecked == true;
         _settings.MicDeviceIndex = MicBox.SelectedIndex - 1;
         _settings.Cleanup.Enabled = CleanupEnabled.IsChecked == true;
         _settings.Cleanup.BaseUrl = CleanupUrl.Text.Trim();

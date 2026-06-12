@@ -4,7 +4,7 @@
 - Global hold-to-talk hotkey (low-level keyboard hook)
 - Local microphone capture (NAudio, 16 kHz mono, in memory)
 - Local transcription (whisper.cpp via Whisper.net), model auto-download
-- Clipboard-paste and keystroke insertion modes, clipboard restore
+- Clipboard-paste and keystroke insertion modes; transcript kept on the clipboard for re-pasting (optional clipboard restore instead)
 - Recording overlay with live mic level and target-window display
 - System-tray app, settings window, JSON config
 - Optional AI cleanup via OpenAI-compatible endpoint

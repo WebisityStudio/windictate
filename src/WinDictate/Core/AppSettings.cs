@@ -12,6 +12,7 @@ public sealed class AppSettings
     public string Language { get; set; } = "en";
     public string VocabularyHint { get; set; } = "";
     public string InsertMode { get; set; } = "paste"; // "paste" or "type"
+    public bool KeepInClipboard { get; set; } = true; // leave transcript on the clipboard for manual re-paste
     public int ClipboardRestoreDelayMs { get; set; } = 300;
     public int MicDeviceIndex { get; set; } = -1; // -1 = system default
     public int Threads { get; set; } = 0; // 0 = auto

@@ -51,8 +51,11 @@
 
                 <GroupBox Header="Text insertion" Padding="10" Margin="0,0,0,12">
                     <StackPanel>
-                        <RadioButton x:Name="PasteRadio" Content="Paste (clipboard, fast, restores text clipboard)" Margin="0,2"/>
-                        <RadioButton x:Name="TypeRadio" Content="Type (simulated keystrokes, never touches clipboard)" Margin="0,2"/>
+                        <RadioButton x:Name="PasteRadio" Content="Paste (clipboard, fast)" Margin="0,2"/>
+                        <RadioButton x:Name="TypeRadio" Content="Type (simulated keystrokes)" Margin="0,2"/>
+                        <CheckBox x:Name="KeepClipboardBox" Content="Keep transcript on the clipboard afterwards" Margin="0,10,0,0"/>
+                        <TextBlock Text="Paste the dictation again anywhere with Ctrl+V — even if the cursor was not in a text box. When off, paste mode restores your previous clipboard and type mode never touches it."
+                                   Foreground="#666" Margin="0,4,0,0" TextWrapping="Wrap"/>
                     </StackPanel>
                 </GroupBox>
 

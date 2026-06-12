@@ -49,8 +49,11 @@ by pre-staging the model file (see below).
 - The global keyboard hook (`WH_KEYBOARD_LL`) is **passive** - it observes modifier
   keys to detect the hotkey and never swallows or records keystrokes. Injected
   (synthetic) events are ignored. Source: `src/WinDictate/Core/KeyboardHook.cs`.
-- Clipboard handling saves and restores the prior clipboard in memory and does not
-  log it. Source: `src/WinDictate/Core/TextInserter.cs`.
+- Clipboard handling never logs clipboard contents. By default the transcript is
+  left on the clipboard after insertion so the user can re-paste it; the
+  "keep on clipboard" setting can be turned off, in which case the prior clipboard
+  is saved in memory only and restored after the paste.
+  Source: `src/WinDictate/Core/TextInserter.cs`.
 - Model files are fetched over HTTPS from the official whisper.cpp distribution.
 - The optional cleanup endpoint, model, and key are operator-configured; nothing is hard-coded.
 

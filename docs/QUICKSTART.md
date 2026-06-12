@@ -28,8 +28,9 @@ Right-click the tray icon → **Settings…** (or double-click the icon).
 - **Speech model** - smaller = faster, larger = more accurate. See the table in the README.
 - **Microphone** - choose a specific input if you have several.
 - **Text insertion**:
-  - *Paste* - fastest; uses the clipboard and restores it immediately.
-  - *Type* - simulates keystrokes; never touches the clipboard (use this if clipboard managers interfere).
+  - *Paste* - fastest; puts the transcript on the clipboard and presses Ctrl+V for you.
+  - *Type* - simulates keystrokes (use this if clipboard managers interfere).
+  - *Keep transcript on the clipboard afterwards* (on by default) - the dictation stays on the clipboard, so if the cursor wasn't in a text box (or you want the same text again somewhere else) just press **Ctrl+V**. Untick it to have paste mode restore your previous clipboard instead.
 - **Custom words / acronyms** - comma-separated terms (e.g. company names, product names) to bias recognition.
 - **AI cleanup** - optional; off by default. See below.
 

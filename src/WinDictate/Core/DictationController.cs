@@ -217,8 +217,8 @@ public sealed class DictationController : IDisposable
 
             text = text.Trim();
             await ShowStatus("Inserting…");
-            bool inserted = await TextInserter.InsertAsync(text, _settings, _dispatcher);
-            if (!inserted)
+            var outcome = await TextInserter.InsertAsync(text, _settings, _dispatcher);
+            if (outcome == InsertOutcome.Failed)
             {
                 await ShowFlash("Release keys then re-dictate", false);
                 return;
@@ -227,8 +227,19 @@ public sealed class DictationController : IDisposable
             if (_settings.LogTranscripts) AppendHistory(text, rec.DurationSeconds);
 
             int words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
-            Logger.Info($"Dictated {rec.DurationSeconds:F1}s of audio into {words} words");
-            await ShowFlash($"Inserted {words} word{(words == 1 ? "" : "s")}", true);
+            string plural = words == 1 ? "" : "s";
+            if (outcome == InsertOutcome.CopiedOnly)
+            {
+                Logger.Info($"Dictated {rec.DurationSeconds:F1}s of audio into {words} words (clipboard only, keys still held)");
+                await ShowFlash($"{words} word{plural} in clipboard — press Ctrl+V", true);
+            }
+            else
+            {
+                Logger.Info($"Dictated {rec.DurationSeconds:F1}s of audio into {words} words");
+                await ShowFlash(_settings.KeepInClipboard
+                    ? $"Inserted {words} word{plural} · in clipboard"
+                    : $"Inserted {words} word{plural}", true);
+            }
         }
         catch (Exception ex)
         {

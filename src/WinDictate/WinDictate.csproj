@@ -10,7 +10,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>WinDictate</AssemblyName>
     <RootNamespace>WinDictate</RootNamespace>
-    <Version>0.1.2</Version>
+    <Version>0.1.3</Version>
     <Product>WinDictate</Product>
     <Description>Local push-to-talk dictation for Windows</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
