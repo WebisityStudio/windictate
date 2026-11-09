@@ -188,6 +188,95 @@ public class AppSmokeTests
         }
     });
 
+    /// <summary>
+    /// The rule that matters most now that dictations queue: text is inserted only
+    /// where the dictation was started. Uses the app's real focus capture
+    /// (GetGUIThreadInfo) and its real inserter against two real windows.
+    /// </summary>
+    [Fact]
+    public void ADictationStartedInOneWindow_IsNotInsertedIntoAnother() => Ui.Run(() =>
+    {
+        const string stays = "Stays where it was dictated. ";
+        const string strays = "Must not land in the other window. ";
+
+        (Window Window, TextBox Box) Make(string title, double left)
+        {
+            var box = new TextBox { Width = 420, Height = 90, FontSize = 16, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12) };
+            var window = new Window
+            {
+                Title = title,
+                Content = box,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                Topmost = true,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = left,
+                Top = 80
+            };
+            return (window, box);
+        }
+
+        var first = Make("WinDictate smoke: dictated here", 40);
+        var second = Make("WinDictate smoke: clicked here afterwards", 520);
+        var target = new WindowsTextTarget();
+        var inserter = new TextInserter(target);
+        var options = new InsertOptions(TypeMode: false, KeepInClipboard: true, ClipboardRestoreDelayMs: 300);
+        (bool hadText, string? previous) = target.GetClipboardTextAsync().GetAwaiter().GetResult();
+        try
+        {
+            first.Window.Show();
+            second.Window.Show();
+            if (!Ui.TakeForeground(first.Window))
+            {
+                _output.WriteLine("NOT CHECKED: could not give the test window the keyboard focus, so the focus rule was not exercised.");
+                Ui.Note("insert-only-where-started", "NOT CHECKED: the test window could not take the keyboard focus on this machine");
+                return;
+            }
+            first.Box.Focus();
+            Keyboard.Focus(first.Box);
+            Ui.Pump(200);
+
+            // The hotkey goes down here: this is where the dictation belongs.
+            InsertionTarget started = target.CurrentTarget();
+            Assert.Equal(new System.Windows.Interop.WindowInteropHelper(first.Window).Handle, started.Window);
+
+            // Focus has not moved: the text is inserted.
+            InsertResult inPlace = inserter.InsertAsync(stays, options, started).GetAwaiter().GetResult();
+            Ui.Pump(700);
+            Assert.Equal(InsertOutcome.Inserted, inPlace.Outcome);
+            Assert.Equal(stays, first.Box.Text);
+
+            // The user clicks into another window before the next text is ready.
+            if (!Ui.TakeForeground(second.Window))
+            {
+                Ui.Note("insert-only-where-started", "PARTLY CHECKED: insertion in place worked; the second window could not take the keyboard focus");
+                return;
+            }
+            second.Box.Focus();
+            Keyboard.Focus(second.Box);
+            Ui.Pump(200);
+
+            InsertResult moved = inserter.InsertAsync(strays, options, started).GetAwaiter().GetResult();
+            Ui.Pump(700);
+            Assert.Equal(InsertOutcome.CopiedOnly, moved.Outcome);
+            Assert.Equal(RecoveryReason.TargetChanged, moved.Reason);
+            Assert.Equal("", second.Box.Text);          // nothing typed into the wrong window
+            Assert.Equal(stays, first.Box.Text);         // and nothing more into the first
+
+            (bool ok, string? onClipboard) = target.GetClipboardTextAsync().GetAwaiter().GetResult();
+            Assert.True(ok);
+            Assert.Equal(strays, onClipboard);           // the words are safe on the clipboard instead
+
+            Ui.Capture(second.Window, "insert-only-where-started", White);
+            Ui.Note("insert-only-where-started", "checked: text went in where it was dictated, and went to the clipboard, not the other window, after focus moved");
+        }
+        finally
+        {
+            first.Window.Close();
+            second.Window.Close();
+            if (hadText && previous != null) target.SetClipboardTextAsync(previous).GetAwaiter().GetResult();
+        }
+    });
+
     [Fact]
     public void KeyboardHook_Installs_IgnoresSyntheticKeys_AndStopsPromptly()
     {
