@@ -31,6 +31,16 @@
                     </StackPanel>
                 </GroupBox>
 
+                <GroupBox Header="Listening indicator" Padding="10" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="How WinDictate shows it is listening. Both stay out of the way and never take focus from what you are typing into."
+                                   Foreground="#666" Margin="0,0,0,6" TextWrapping="Wrap"/>
+                        <RadioButton x:Name="IndicatorPillRadio" GroupName="Indicator" Content="Glass pill: a small capsule above the taskbar" Margin="0,2"/>
+                        <RadioButton x:Name="IndicatorGlowRadio" GroupName="Indicator" Content="Edge glow: the taskbar edge lights up, with no shape" Margin="0,2"/>
+                        <Button x:Name="IndicatorPreviewButton" Content="Preview" Width="90" Height="28" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </GroupBox>
+
                 <GroupBox Header="Speech model (runs locally)" Padding="10" Margin="0,0,0,12">
                     <StackPanel>
                         <ComboBox x:Name="ModelBox" Width="300" HorizontalAlignment="Left">

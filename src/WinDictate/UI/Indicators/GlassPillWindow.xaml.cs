@@ -122,7 +122,7 @@ public partial class GlassPillWindow : Window, IDictationIndicator
         HideAfter(900);
     }
 
-    public void ShowNotice(string text, NoticeKind kind)
+    public void ShowNotice(string text, NoticeKind kind, int holdMilliseconds = 2000)
     {
         if (_disposed) return;
         bool fresh = Prepare();
@@ -142,7 +142,7 @@ public partial class GlassPillWindow : Window, IDictationIndicator
         if (kind == NoticeKind.Busy) StartPulse();
         Enter(fresh);
         // A wait stays until something replaces it; the long timeout is only a safety net.
-        HideAfter(kind == NoticeKind.Busy ? 15000 : 2000);
+        HideAfter(kind == NoticeKind.Busy ? 15000 : Math.Clamp(holdMilliseconds, 600, 10000));
     }
 
     public void HideNow()

@@ -51,10 +51,11 @@ public interface IDictationIndicator : IDisposable
     void ShowDone();
 
     /// <summary>
-    /// Something needs words. Shown in the same glass and hidden again after a
-    /// moment (a <see cref="NoticeKind.Busy"/> notice stays longer, until replaced).
+    /// Something needs words. Shown in the same glass and hidden again after
+    /// <paramref name="holdMilliseconds"/> (a <see cref="NoticeKind.Busy"/> notice
+    /// ignores that and stays until something replaces it).
     /// </summary>
-    void ShowNotice(string text, NoticeKind kind);
+    void ShowNotice(string text, NoticeKind kind, int holdMilliseconds = 2000);
 
     /// <summary>Hide at once, with no confirmation (cancelled, accidental tap).</summary>
     void HideNow();

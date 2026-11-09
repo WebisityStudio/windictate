@@ -54,7 +54,7 @@ public sealed class DictationController : IDisposable
     /// the app asks the hotkey monitor to stop it.</summary>
     public event Action<long>? MaxDurationReached;
 
-    private const int OverlayFadeMs = 900; // OverlayWindow's fade-out after a flash
+    private const int OverlayFadeMs = 350; // the indicator's fade-out after a notice
 
     private readonly IDictationOverlay _overlay;
     private readonly IDictationPlatform _platform;

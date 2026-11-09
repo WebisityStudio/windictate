@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using WinDictate.Core;
+using WinDictate.UI.Indicators;
 using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
@@ -14,6 +15,7 @@ public partial class SettingsWindow : Window
     private readonly AppSettings _settings;
     private readonly List<string> _micNames = new(); // current waveIn devices, by index
     private int _missingMicItem = -1;                // combo index of a "(not connected)" entry
+    private IDictationIndicator? _preview;           // the indicator shown by the Preview button
     public event Action? Saved;
 
     public SettingsWindow(AppSettings settings)
@@ -29,6 +31,30 @@ public partial class SettingsWindow : Window
         CloseButton.Click += (_, _) => Close();
         OpenDataButton.Click += (_, _) => OpenDataFolder();
         ModelBox.SelectionChanged += (_, _) => UpdateModelStatus();
+        IndicatorPreviewButton.Click += (_, _) => PreviewIndicator();
+        Closed += (_, _) =>
+        {
+            _preview?.Dispose();
+            _preview = null;
+        };
+    }
+
+    private IndicatorStyle SelectedIndicator() =>
+        IndicatorGlowRadio.IsChecked == true ? IndicatorStyle.Glow : IndicatorStyle.Pill;
+
+    /// <summary>Plays a pretend dictation on the chosen indicator. Records nothing, inserts nothing.</summary>
+    private void PreviewIndicator()
+    {
+        try
+        {
+            _preview?.Dispose();
+            _preview = IndicatorFactory.Create(SelectedIndicator());
+            IndicatorDemo.Play(_preview);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Indicator preview failed", ex);
+        }
     }
 
     private void LoadInto()
@@ -41,6 +67,9 @@ public partial class SettingsWindow : Window
         TypeRadio.IsChecked = _settings.InsertMode.Equals("type", StringComparison.OrdinalIgnoreCase);
         KeepClipboardBox.IsChecked = _settings.KeepInClipboard;
         TrailingSpaceBox.IsChecked = _settings.AddTrailingSpace;
+        bool glow = IndicatorFactory.ParseStyle(_settings.Indicator) == IndicatorStyle.Glow;
+        IndicatorGlowRadio.IsChecked = glow;
+        IndicatorPillRadio.IsChecked = !glow;
         CleanupEnabled.IsChecked = _settings.Cleanup.Enabled;
         CleanupUrl.Text = _settings.Cleanup.BaseUrl;
         CleanupModel.Text = _settings.Cleanup.Model;
@@ -119,6 +148,7 @@ public partial class SettingsWindow : Window
         _settings.InsertMode = TypeRadio.IsChecked == true ? "type" : "paste";
         _settings.KeepInClipboard = KeepClipboardBox.IsChecked == true;
         _settings.AddTrailingSpace = TrailingSpaceBox.IsChecked == true;
+        _settings.Indicator = SelectedIndicator() == IndicatorStyle.Glow ? "glow" : "pill";
         SaveMicChoice();
         _settings.Cleanup.Enabled = CleanupEnabled.IsChecked == true;
         _settings.Cleanup.BaseUrl = CleanupUrl.Text.Trim();

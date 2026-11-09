@@ -53,6 +53,15 @@ internal static class IndicatorCues
         if (success) return new IndicatorCue(CueAction.Done);
 
         string text = (result ?? "").Trim();
+        // Unknown message: show it as it is rather than hide a problem.
+        return KnownProblem(text) ?? Notice(Shorten(text), NoticeKind.Warning);
+    }
+
+    /// <summary>True when a failed result has its own deliberate wording (rather than being shown as it came).</summary>
+    public static bool Recognises(string? result) => KnownProblem((result ?? "").Trim()) != null;
+
+    private static IndicatorCue? KnownProblem(string text)
+    {
         if (Begins(text, "No speech")) return Notice("Didn't catch that", NoticeKind.Warning);
         if (Begins(text, "No microphone")) return Notice("No microphone found", NoticeKind.Warning);
         if (Begins(text, "Microphone not ready")) return Notice("Microphone wasn't ready", NoticeKind.Warning);
@@ -60,9 +69,7 @@ internal static class IndicatorCues
         if (Begins(text, "Not inserted")) return Notice("Copied. Press Ctrl+V", NoticeKind.Info);
         if (Begins(text, "Couldn't insert")) return Notice("Couldn't insert. Dictate again", NoticeKind.Warning);
         if (Begins(text, "Error")) return Notice("Something went wrong", NoticeKind.Warning);
-
-        // Unknown message: show it as it is rather than hide a problem.
-        return Notice(Shorten(text), NoticeKind.Warning);
+        return null;
     }
 
     private static IndicatorCue Notice(string text, NoticeKind kind) => new(CueAction.Notice, text, kind);

@@ -26,6 +26,12 @@ internal sealed class EdgeGlowIndicator : IDictationIndicator
     private readonly EdgeGlowWindow _glow = new();
     private readonly GlassPillWindow _words = new() { Lift = 8 };
 
+    /// <summary>The glow itself (for the smoke tests).</summary>
+    internal EdgeGlowWindow Glow => _glow;
+
+    /// <summary>The pill that carries worded notices (for the smoke tests).</summary>
+    internal GlassPillWindow Words => _words;
+
     public void ShowListening(IntPtr targetWindow)
     {
         _words.HideNow();
@@ -46,10 +52,10 @@ internal sealed class EdgeGlowIndicator : IDictationIndicator
         _glow.ShowDone();
     }
 
-    public void ShowNotice(string text, NoticeKind kind)
+    public void ShowNotice(string text, NoticeKind kind, int holdMilliseconds = 2000)
     {
         _glow.HideNow();
-        _words.ShowNotice(text, kind);
+        _words.ShowNotice(text, kind, holdMilliseconds);
     }
 
     public void HideNow()

@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Forms;
 using WinDictate.Core;
 using WinDictate.UI;
+using WinDictate.UI.Indicators;
 using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
 
@@ -18,7 +19,7 @@ public partial class App : Application
     private HotkeyMonitor? _hotkeys;
     private HotkeyWatchdog? _watchdog;
     private DictationController? _controller;
-    private OverlayWindow? _overlay;
+    private IndicatorPresenter? _indicators;
     private NotifyIcon? _tray;
     private AppSettings _settings = new();
     private Icon? _idleIcon;
@@ -48,12 +49,12 @@ public partial class App : Application
         Logger.Init();
         _settings = AppSettings.Load();
 
-        _overlay = new OverlayWindow();
-        _overlay.Show();   // realize the handle so we can set ex-styles
-        _overlay.HideOverlay();
+        // The listening indicator (glass pill or edge glow); its windows are only
+        // created on screen the first time something is shown.
+        _indicators = new IndicatorPresenter(Dispatcher, IndicatorFactory.ParseStyle(_settings.Indicator));
 
         OnStatus("Starting…"); // before the model warm-up can report "Ready"
-        _controller = new DictationController(_settings, new OverlayPresenter(Dispatcher, _overlay),
+        _controller = new DictationController(_settings, _indicators,
             new WindowsDictationPlatform(), new Transcriber(), new WindowsTextTarget());
         _controller.StatusChanged += OnStatus;
         _controller.Start();
@@ -159,6 +160,7 @@ public partial class App : Application
             _hotkeys!.Reconfigure(_settings.Hotkey);
             hotkeyInfo.Text = $"Hold {_hotkeys.ActiveHotkeyText} to dictate";
             _controller!.UpdateSettings(_settings);
+            _indicators!.UseStyle(IndicatorFactory.ParseStyle(_settings.Indicator));
             Logger.Info($"Settings updated. Hotkey = {_hotkeys.ActiveHotkeyText}, model = {_settings.Model}");
         };
         win.Show();
@@ -260,6 +262,7 @@ public partial class App : Application
         _watchdog?.Dispose();
         _hook?.Dispose();
         _controller?.Dispose();
+        _indicators?.Dispose();
         _idleIcon?.Dispose();
         _busyIcon?.Dispose();
         _singleInstance?.Dispose();

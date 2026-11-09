@@ -14,6 +14,9 @@ public sealed class AppSettings
     public string InsertMode { get; set; } = "paste"; // "paste" or "type"
     public bool KeepInClipboard { get; set; } = true; // leave transcript on the clipboard for manual re-paste
     public bool AddTrailingSpace { get; set; } = true; // so the next dictation does not run into this one
+    // How the app shows it is listening: "pill" (a small glass capsule above the
+    // taskbar) or "glow" (the taskbar edge lights up, no shape).
+    public string Indicator { get; set; } = "pill";
     public int ClipboardRestoreDelayMs { get; set; } = 300;
     public int MicDeviceIndex { get; set; } = -1; // -1 = system default
     // Product name of the chosen microphone, resolved to its current index when
