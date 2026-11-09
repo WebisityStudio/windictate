@@ -99,7 +99,12 @@ internal static class Ui
     public static int Capture(Window window, string name, Color backdrop, bool plain = false)
     {
         window.UpdateLayout();
-        if (window.Content is not FrameworkElement content)
+        // The window's own top element covers its whole inside, margins included
+        // (the content alone would be drawn shifted by its margin and cut off).
+        FrameworkElement? content = VisualTreeHelper.GetChildrenCount(window) > 0
+            ? VisualTreeHelper.GetChild(window, 0) as FrameworkElement
+            : window.Content as FrameworkElement;
+        if (content == null)
             throw new InvalidOperationException($"{name}: the window has no content to capture.");
         double width = content.ActualWidth, height = content.ActualHeight;
         if (width < 1 || height < 1)
