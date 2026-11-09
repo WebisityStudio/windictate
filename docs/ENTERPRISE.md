@@ -24,7 +24,7 @@ by pre-staging the model file (see below).
 
 ## Privacy posture (defaults)
 
-- No audio persisted. Captured audio lives in a memory buffer and is released after transcription.
+- No audio persisted. Captured audio lives in a memory buffer and is released after transcription. The microphone test in Settings only measures loudness for a few seconds; that audio is discarded and never transcribed.
 - No transcript history. Off by default; when on, it is a local file only.
 - No telemetry. The app phones home to nothing.
 - The event log records operational events (start/stop, errors) but **never transcript or clipboard contents** unless history is explicitly enabled.
@@ -45,6 +45,13 @@ by pre-staging the model file (see below).
 - Settings live in `%APPDATA%\WinDictate\settings.json` (per-user). A managed default
   can be pushed by deploying a pre-populated `settings.json`.
 - Runs as a normal user (`asInvoker`); no elevation required.
+- **Start with Windows** is off by default. When a user switches it on in
+  Settings, the app writes one value, `WinDictate`, under
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (current user only), and
+  deletes it when switched off. Nothing else is registered: no service, no
+  scheduled task, nothing machine-wide. If you would rather start it by policy
+  (or your endpoint protection objects to a user-written Run entry), leave the
+  switch off and deploy the startup entry yourselves.
 
 ## Things a security review will want to confirm
 

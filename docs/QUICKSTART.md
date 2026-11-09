@@ -33,16 +33,33 @@ before it has finished the pill says "Getting ready". This happens once.
 
 Right-click the tray icon → **Settings…** (or double-click the icon).
 
-- **Hotkey** - pick the modifier combo to hold. Default Ctrl + Alt.
-- **Listening indicator** - how it shows it is listening: *Glass pill* (a small capsule above the taskbar with moving bars) or *Edge glow* (the taskbar edge lights up, with no shape). **Preview** plays a pretend dictation so you can see it. Either way it shows words only when something needs your attention.
-- **Speech model** - smaller = faster, larger = more accurate. See the table in the README.
-- **Microphone** - choose a specific input if you have several.
-- **Text insertion**:
-  - *Paste* - fastest; puts the transcript on the clipboard and presses Ctrl+V for you.
-  - *Type* - simulates keystrokes (use this if clipboard managers interfere).
-  - *Keep transcript on the clipboard afterwards* (on by default) - the dictation stays on the clipboard, so if the cursor wasn't in a text box (or you want the same text again somewhere else) just press **Ctrl+V**. Untick it to have paste mode restore your previous clipboard instead.
-  - *Add a space after each dictation* (on by default) - keeps consecutive dictations apart.
-- **Custom words / acronyms** - comma-separated terms (e.g. company names, product names) to bias recognition.
+The line at the top says where things stand: "Ready. Everything stays on this PC." It changes if the speech model still has to download, or if AI cleanup is on (it then names where the text is sent). Nothing changes until you press **Save**.
+
+**Dictation**
+
+- **Shortcut** - the keys you hold to talk (Ctrl + Alt unless changed under Advanced).
+- **Indicator** - how it shows it is listening: *Glass pill* (a small capsule above the taskbar with moving bars) or *Edge glow* (the taskbar edge lights up, with no shape). **Preview** plays a pretend dictation so you can see it. Either way it shows words only when something needs your attention.
+- **Space after each dictation** (on by default) - keeps consecutive dictations apart.
+
+**This PC**
+
+- **Start with Windows** (off until you switch it on) - WinDictate is ready as soon as you sign in. It adds one entry to your own Windows startup list and removes it when you switch it off.
+- **Microphone** - shows the microphone in use. **Test** listens for a few seconds and moves the bar when it hears you; nothing is recorded or kept.
+- **Speech quality** - *Fast*, *Balanced* (the default, right for most laptops) or *Accurate* (slower). The line underneath says if a one-time download is still needed.
+
+**Privacy**
+
+- **Keep the text on the clipboard** (on by default) - the dictation stays on the clipboard, so if the cursor wasn't in a text box (or you want the same text again somewhere else) just press **Ctrl+V**. Switch it off to have your previous clipboard put back instead.
+- **Save a history of dictations** (off by default) - when off, nothing you say or dictate is written to disk.
+
+**Advanced** (the link at the bottom left)
+
+- **Shortcut keys** - pick the two keys to hold.
+- **Ignore quick taps** - holds shorter than this do nothing, so brushing the keys is harmless.
+- **Insert text by** - *Pasting* is fastest: it puts the text on the clipboard and presses Ctrl+V for you. *Typing* simulates keystrokes and never uses the clipboard (use it if a clipboard manager interferes).
+- **Microphone to use** - choose a specific input if you have several. *System default* follows Windows, for example when you plug in a headset.
+- **Speech model** - the exact model behind the quality choice, plus the smallest and largest ones. See the table in the README.
+- **Custom words** - comma-separated names and acronyms to listen for.
 - **AI cleanup** - optional; off by default. See below.
 
 ## 4. Optional: AI cleanup

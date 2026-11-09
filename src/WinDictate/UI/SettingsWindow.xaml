@@ -16,7 +16,7 @@
             <Setter Property="FontSize" Value="11"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
-            <Setter Property="Margin" Value="0,18,0,2"/>
+            <Setter Property="Margin" Value="0,14,0,0"/>
         </Style>
 
         <Style x:Key="FieldLabel" TargetType="TextBlock">
@@ -34,7 +34,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="HeaderedContentControl">
-                        <Border BorderThickness="{TemplateBinding BorderThickness}" Padding="0,11"
+                        <Border BorderThickness="{TemplateBinding BorderThickness}" Padding="0,7"
                                 BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -44,7 +44,7 @@
                                 <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="{Binding Header, RelativeSource={RelativeSource TemplatedParent}}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"
                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
-                                    <TextBlock x:Name="Explanation" Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="12.5" TextWrapping="Wrap" Margin="0,1,0,0"
+                                    <TextBlock x:Name="Explanation" Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="12" TextWrapping="Wrap" Margin="0,1,0,0"
                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                 </StackPanel>
                                 <ContentPresenter Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0"/>
@@ -205,7 +205,7 @@
         </Style>
     </Window.Resources>
 
-    <Grid Margin="24,12,24,18" TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+    <Grid Margin="24,8,24,14" TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -213,7 +213,7 @@
         </Grid.RowDefinitions>
 
         <!-- Name, and one line saying where things stand. -->
-        <Grid Grid.Row="0" Margin="0,4,0,2">
+        <Grid Grid.Row="0" Margin="0,2,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
@@ -279,7 +279,7 @@
                 <HeaderedContentControl x:Name="AutoStartRow" Style="{StaticResource FirstRow}" Header="Start with Windows" Tag="Ready as soon as you sign in">
                     <CheckBox x:Name="AutoStartBox" Style="{StaticResource Switch}" AutomationProperties.Name="Start with Windows"/>
                 </HeaderedContentControl>
-                <HeaderedContentControl x:Name="MicRow" Style="{StaticResource Row}" Header="Microphone" Tag="Check that it hears you">
+                <HeaderedContentControl x:Name="MicRow" Style="{StaticResource Row}" Header="Microphone" Tag="System default">
                     <StackPanel Orientation="Horizontal">
                         <Border Width="64" Height="4" CornerRadius="2" VerticalAlignment="Center" Margin="0,0,10,0"
                                 Background="{DynamicResource ControlStrongStrokeColorDefaultBrush}">
@@ -290,7 +290,6 @@
                                 ToolTip="Listens for a few seconds. Nothing is kept."/>
                     </StackPanel>
                 </HeaderedContentControl>
-                <ComboBox x:Name="MicBox" HorizontalAlignment="Stretch" Margin="0,0,0,12" AutomationProperties.Name="Microphone"/>
                 <HeaderedContentControl x:Name="QualityRow" Style="{StaticResource Row}" Header="Speech quality" Tag="Balanced suits most laptops">
                     <Border Style="{StaticResource Segments}">
                         <StackPanel Orientation="Horizontal">
@@ -331,6 +330,9 @@
                             </StackPanel>
                         </Border>
                     </HeaderedContentControl>
+                    <HeaderedContentControl Style="{StaticResource Row}" Header="Microphone to use" Tag="System default follows Windows, for example when a headset is plugged in">
+                        <ComboBox x:Name="MicBox" Width="236" AutomationProperties.Name="Microphone to use"/>
+                    </HeaderedContentControl>
                     <HeaderedContentControl x:Name="ModelRow" Style="{StaticResource Row}" Header="Speech model" Tag="">
                         <ComboBox x:Name="ModelBox" Width="236" AutomationProperties.Name="Speech model"/>
                     </HeaderedContentControl>
@@ -359,7 +361,7 @@
             </StackPanel>
         </ScrollViewer>
 
-        <Border Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" Padding="0,14,0,0" Margin="0,8,0,0">
+        <Border Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" Padding="0,10,0,0" Margin="0,6,0,0">
             <Grid>
                 <ToggleButton x:Name="AdvancedToggle" Style="{StaticResource Link}" Content="Advanced" HorizontalAlignment="Left" VerticalAlignment="Center"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">

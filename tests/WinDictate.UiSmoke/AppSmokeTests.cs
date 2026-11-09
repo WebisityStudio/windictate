@@ -123,6 +123,10 @@ public class AppSmokeTests
 
             // Advanced opens below, and the window stays within the screen.
             double before = window.ActualHeight;
+            // A 14-inch laptop at 150% scaling leaves about 650 units of height: the everyday page must fit without scrolling.
+            Ui.Note($"settings-{theme}", $"everyday page: {window.ActualWidth:F0} x {before:F0} units");
+            Assert.True(before <= 648, $"the everyday page is {before:F0} units tall; it must fit a small laptop screen (648)");
+            Assert.Equal(0, window.Scroller.ScrollableHeight, 1.0);
             window.AdvancedToggle.IsChecked = true;
             Ui.Pump(500);
             Assert.Equal(Visibility.Visible, window.AdvancedPanel.Visibility);

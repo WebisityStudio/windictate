@@ -76,7 +76,7 @@ If the tray tooltip says *"Model not ready, check log"* right after start-up eve
 
 - **Hold Ctrl + Alt**, speak a sentence or two, then **release**. The text appears where your cursor is.
 - Press any other key while holding to **cancel** the current dictation.
-- Right-click the tray icon for **Settings**: hotkey, model, microphone, insertion mode, custom vocabulary, and the optional cleanup endpoint.
+- Right-click the tray icon for **Settings**. The everyday choices are up front in plain words: the listening indicator, *Start with Windows*, the microphone (with a test), speech quality, and what happens to the clipboard and history. The shortcut keys, pasting or typing, which microphone and speech model to use, custom words and the optional cleanup service are under **Advanced**.
 
 ## Models
 

@@ -29,8 +29,9 @@ The log never contains dictated text.
 ## 1. Basics and settings compatibility
 
 - [ ] **Existing settings load.** Start with your v0.1.3 `settings.json`.
-      Expected: hotkey, model, microphone and insertion mode are as before. In
-      Settings, *Add a space after each dictation* is ticked.
+      Expected: hotkey, model, microphone and insertion mode are as before
+      (the hotkey, insertion mode and exact model are under *Advanced*). In
+      Settings, *Space after each dictation* is switched on.
 - [ ] **Save adds the new keys.** Click Save in Settings. Expected:
       `settings.json` now also has `AddTrailingSpace`, `MicDeviceName` and
       `MinVoicedMs`, and the other values are unchanged.
@@ -42,8 +43,8 @@ The log never contains dictated text.
 - [ ] **Quick tap.** Tap Ctrl+Alt briefly. Expected: nothing appears.
 - [ ] **Enabled toggle.** Untick *Enabled* in the tray menu, then try to
       dictate. Expected: nothing happens. Tick it again and dictation works.
-- [ ] **Settings text.** The custom-words help text reads "e.g. KYC, ISA,
-      onboarding" and names no company.
+- [ ] **Settings text.** No text in Settings, including under *Advanced*,
+      names a company.
 
 ## 2. Hotkey after a cancel (bug 1)
 
@@ -126,8 +127,8 @@ The log never contains dictated text.
 
 ## 5. Keyboard hook on its own thread (bug 4)
 
-- [ ] **Offline model change.** Disconnect the network, switch the model in
-      Settings to one that is not downloaded, and save. Expected: the tray
+- [ ] **Offline model change.** Disconnect the network, switch the speech
+      quality (or the model under *Advanced*) to one that is not downloaded, and save. Expected: the tray
       shows "Model not ready, check log" and the log records the failed
       download, but dictation keeps working with the previous model (no
       "Error, see log"). Switch back and reconnect.
@@ -187,7 +188,7 @@ The log never contains dictated text.
 
 ## 9. Microphone after docking (bug 9)
 
-- [ ] In Settings, choose a specific microphone (for example the headset) and
+- [ ] In Settings, under *Advanced*, choose a specific microphone (for example the headset) and
       save. Then dock or undock, or plug in another USB audio device, so that
       Windows re-orders the devices. Dictate. Expected: the chosen microphone
       is still used. Check with the level meter, or speak only into that mic.
@@ -238,7 +239,38 @@ need a person and a real screen.
       indicator is visible to the other side (it is drawn like any other
       window).
 
-## 12. Privacy
+## 12. Settings window
+
+The automated Windows tests open this window in light and dark, open
+*Advanced*, and check the choices and wording. They cannot see the glass
+background, a real microphone, or a real sign-in.
+
+- [ ] **Look.** Open Settings over a busy window. Expected: Windows 11's
+      rounded controls on a softly blurred glass background, readable in light
+      and in dark mode (*Settings → Personalisation → Colours*). Note if the
+      background is plain instead of glass (that is expected with *Transparency
+      effects* off or on battery saver) or if any text is hard to read.
+- [ ] **Advanced.** Click *Advanced*. Expected: the window grows downwards (or
+      scrolls on a small screen) and never hangs off the bottom of the screen.
+- [ ] **Microphone test.** Press **Test** and speak. Expected: the bar moves
+      with your voice and the line says "It hears you". Under *Advanced*,
+      choose a microphone that is muted and test again. Expected: "No sound heard…"
+      or "Could not open this microphone".
+- [ ] **Speech quality.** Choose *Fast*. Expected: under *Advanced*, the speech
+      model shows base.en, and the line says whether it must download.
+- [ ] **Start with Windows.** Switch it on and Save. Expected: WinDictate is
+      listed in Task Manager → *Startup apps*, and starts after you sign out
+      and in again. Switch it off and Save. Expected: the entry is gone.
+- [ ] **Honest status line.** Under *Advanced*, switch on *AI cleanup*.
+      Expected: the line at the top changes from "Everything stays on this PC"
+      to say where the text is sent. Switch it off again and Cancel.
+- [ ] **Keyboard only.** Tab through the window and use Space on the switches
+      and choices. Expected: every control can be reached and changed, Enter
+      saves, Esc closes.
+- [ ] **High contrast.** Turn on a contrast theme (*Settings → Accessibility →
+      Contrast themes*) and open Settings. Expected: everything is readable.
+
+## 13. Privacy
 
 - [ ] Search the log for a distinctive word you dictated. Expected: not found.
 - [ ] Look in `%APPDATA%\WinDictate`. Expected: no audio files, and no

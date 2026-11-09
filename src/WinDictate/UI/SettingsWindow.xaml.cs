@@ -17,7 +17,6 @@ namespace WinDictate.UI;
 /// </summary>
 public partial class SettingsWindow : Window
 {
-    private const string MicIdleLine = "Check that it hears you";
     private const int MicTestSeconds = 6;
     private const double MicBarWidth = 64;
 
@@ -47,6 +46,7 @@ public partial class SettingsWindow : Window
         PopulateModels();
         LoadInto();
         PopulateMics();
+        MicRow.Tag = MicLine();
         RefreshModelLines();
         RefreshStatus();
 
@@ -55,7 +55,7 @@ public partial class SettingsWindow : Window
         OpenDataButton.Click += (_, _) => OpenDataFolder();
         IndicatorPreviewButton.Click += (_, _) => PreviewIndicator();
         MicTestButton.Click += (_, _) => ToggleMicTest();
-        MicBox.SelectionChanged += (_, _) => StopMicTest(MicIdleLine);
+        MicBox.SelectionChanged += (_, _) => OnMicChosen();
         HotkeyBox.SelectionChanged += (_, _) => ShowShortcutKeys();
         ModelBox.SelectionChanged += (_, _) => OnModelChosen();
         QualityFast.Checked += (_, _) => OnQualityChosen(SpeechQuality.Fast);
@@ -71,7 +71,7 @@ public partial class SettingsWindow : Window
         Activated += (_, _) => WindowBackdrop.TryUseGlass(this); // the theme may have put its own background back
         Closed += (_, _) =>
         {
-            StopMicTest(MicIdleLine);
+            StopMicTest(null);
             _preview?.Dispose();
             _preview = null;
         };
@@ -197,6 +197,21 @@ public partial class SettingsWindow : Window
         MicBox.SelectedIndex = idx >= 0 ? idx + 1 : 0;
     }
 
+    /// <summary>The everyday row names the microphone in use; it is chosen under Advanced.</summary>
+    private string MicLine()
+    {
+        int item = MicBox.SelectedIndex;
+        if (_missingMicItem >= 0 && item == _missingMicItem)
+            return $"{_settings.MicDeviceName} is not connected: using the system default";
+        return item > 0 && item - 1 < _micNames.Count ? _micNames[item - 1] : "System default";
+    }
+
+    private void OnMicChosen()
+    {
+        StopMicTest(null);
+        MicRow.Tag = MicLine();
+    }
+
     private void SaveMicChoice()
     {
         int item = MicBox.SelectedIndex;
@@ -223,14 +238,14 @@ public partial class SettingsWindow : Window
     {
         if (_micTest != null)
         {
-            StopMicTest(_micHeard ? "It hears you" : MicIdleLine);
+            StopMicTest(_micHeard ? "It hears you" : null);
             return;
         }
 
         int item = MicBox.SelectedIndex;
         if (_missingMicItem >= 0 && item == _missingMicItem)
         {
-            MicRow.Tag = "That microphone is not connected";
+            MicRow.Tag = "That microphone is not connected. Pick another under Advanced";
             return;
         }
         int device = item > 0 && item - 1 < _micNames.Count ? item - 1 : MicrophoneSelector.SystemDefault;
@@ -257,7 +272,7 @@ public partial class SettingsWindow : Window
 
         _micTestTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(MicTestSeconds) };
         _micTestTimer.Tick += (_, _) =>
-            StopMicTest(_micHeard ? "It hears you" : "No sound heard. Check the microphone, or pick another");
+            StopMicTest(_micHeard ? "It hears you" : "No sound heard. Check it, or pick another under Advanced");
         _micTestTimer.Start();
     }
 
@@ -270,7 +285,8 @@ public partial class SettingsWindow : Window
         MicLevelBar.Width = MicBarWidth * _micLevel;
     }
 
-    private void StopMicTest(string line)
+    /// <param name="line">What to say about the test; null to go back to naming the microphone.</param>
+    private void StopMicTest(string? line)
     {
         _micTestTimer?.Stop();
         _micTestTimer = null;
@@ -280,7 +296,7 @@ public partial class SettingsWindow : Window
 
         MicTestButton.Content = "Test";
         MicLevelBar.Width = 0;
-        MicRow.Tag = line;
+        MicRow.Tag = line ?? MicLine();
         _micOpening.ContinueWith(_ => recorder.Dispose(), TaskScheduler.Default);
         _micOpening = Task.CompletedTask;
     }

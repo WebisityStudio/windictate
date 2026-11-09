@@ -98,6 +98,20 @@ no new network calls.
   wait ("Didn't catch that", "Copied. Press Ctrl+V", "Opening microphone").
 - Setting **"Listening indicator"** (glass pill or edge glow) with a Preview
   button; `settings.json` key `Indicator` (`"pill"` or `"glow"`).
+- **A new Settings window** in the same quiet style, using Windows 11's own
+  controls, light and dark mode, high contrast and glass background. The
+  everyday choices are up front in plain words; the shortcut keys, pasting or
+  typing, the exact speech model, custom words and AI cleanup are under
+  **Advanced**. The line at the top says "Everything stays on this PC" only
+  while that is true: with AI cleanup on, it names where the text is sent.
+- **Start with Windows** (off until switched on in Settings). It adds one entry
+  to the signed-in user's own startup list and removes it again when switched
+  off; it respects being turned off in Task Manager.
+- **Microphone test** in Settings: listens for a few seconds and shows a level
+  bar, so you can see the chosen microphone hears you. Nothing is recorded,
+  transcribed or kept.
+- **Speech quality** as Fast, Balanced or Accurate (base.en, small.en and
+  medium.en); the other models remain available under Advanced.
 - Windows smoke tests (`tests/WinDictate.UiSmoke`, workflow `ui-smoke`): they
   open the real indicators and Settings window on a Windows desktop, type and
   paste into a test window with the app's own code, start and stop the
