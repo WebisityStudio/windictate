@@ -5,14 +5,14 @@
 - Local microphone capture (NAudio, 16 kHz mono, in memory)
 - Local transcription (whisper.cpp via Whisper.net), model auto-download
 - Clipboard-paste and keystroke insertion modes; transcript kept on the clipboard for re-pasting (optional clipboard restore instead)
-- Recording overlay with live mic level and target-window display
+- Quiet listening indicator (glass pill or edge glow) with a live waveform
 - System-tray app, settings window, JSON config
 - Optional AI cleanup via OpenAI-compatible endpoint
 - Privacy defaults: no audio on disk, no history, no telemetry
 - Unit tests for the hotkey state machine and watchdog, the dictation queue, insertion fallbacks and transcript clean-up; they run on any OS and in Windows CI
 
 ## v0.2 - usability
-- Configurable overlay position and size
+- Configurable indicator position
 - Per-app insertion preference (paste vs type)
 - Retry / re-insert last transcript
 - Better silence/VAD trimming before transcription

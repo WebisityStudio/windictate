@@ -28,8 +28,8 @@ regulated environment. WinDictate keeps the whole speech path on the laptop.
 - **Fully local transcription** via [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (through the Whisper.net bindings). Works with no internet once the model is present.
 - **Pastes into the focused app** using the clipboard or, optionally, by simulating keystrokes. By default the transcript **stays on the clipboard** afterwards, so you can paste it again anywhere with Ctrl+V - even if the cursor wasn't in a text box when you released the hotkey. A setting switches this off to restore your previous clipboard instead.
 - **Back-to-back dictation**: start the next dictation while the last one is still being transcribed; results are inserted in the order you spoke them, each followed by a space (a setting turns the space off).
-- **Never drops a dictation silently**: if the text cannot be inserted (for example a key stays held down, or Windows rejects the keystrokes), it is left on the clipboard and the overlay tells you to press Ctrl+V.
-- **A small recording overlay** shows it is listening, a live mic level, and which window it will insert into.
+- **Never drops a dictation silently**: if the text cannot be inserted (for example a key stays held down, or Windows rejects the keystrokes), it is left on the clipboard and a short notice tells you to press Ctrl+V.
+- **A quiet listening indicator**: a small glass pill above the taskbar with a live waveform, or, if you prefer, just a soft glow along the taskbar edge. It is click-through, never takes focus, appears on the screen you are working on, and shows words only when something needs your attention.
 - **System-tray app** - runs quietly, no main window. Right-click for settings.
 - **Optional AI cleanup** (off by default): fix punctuation, capitalisation and filler words via any OpenAI-compatible endpoint - the public API *or* an internal gateway URL. If it fails or times out, the raw local transcript is used.
 - **Privacy-first defaults**: no audio is ever written to disk; no transcript history unless you switch it on.
@@ -38,7 +38,7 @@ regulated environment. WinDictate keeps the whole speech path on the laptop.
 
 ```
 Hold Ctrl+Alt
-  -> overlay appears, microphone records (16 kHz mono, in memory only)
+  -> the listening indicator appears, microphone records (16 kHz mono, in memory only)
 Release Ctrl+Alt
   -> local Whisper transcribes the audio on-device
   -> (optional) cleanup model fixes punctuation/formatting
@@ -97,7 +97,7 @@ languages, set the language to `auto` in settings and use a non-`.en` model.
 - **Cleanup** is opt-in. With it off, WinDictate makes **no network calls at all** (after the one-time model download).
 - **No API keys are required** for the core product. A key is only needed if you point cleanup at an endpoint that requires one.
 - By default the transcript is **kept on the clipboard** after insertion as a safety net (so a dictation is never lost if the focus wasn't a text box). For stricter clipboard hygiene, untick *"Keep transcript on the clipboard afterwards"* in Settings: paste mode then saves your previous clipboard in memory and restores it within a few hundred milliseconds, and its contents are never logged. Only text is restored in that mode: if the clipboard held an image or files, it is cleared after insertion rather than left holding the transcript. Combine it with the "type" insertion mode to avoid the clipboard entirely.
-- Whatever that setting says, a dictation that **could not be inserted** (keys held for several seconds, keystrokes rejected by Windows, or the workstation locked before it was inserted) is left on the clipboard, and the overlay says so, rather than being thrown away.
+- Whatever that setting says, a dictation that **could not be inserted** (keys held for several seconds, keystrokes rejected by Windows, or the workstation locked before it was inserted) is left on the clipboard, and a notice says so, rather than being thrown away.
 
 See [docs/ENTERPRISE.md](docs/ENTERPRISE.md) for a deployment and governance summary
 aimed at IT / security teams.

@@ -19,20 +19,22 @@ deployment step).
 ## 2. First dictation
 
 1. Open Notepad or Outlook and click into a text box.
-2. **Hold Ctrl + Alt.** A small "Listening…" pill appears at the bottom of the screen once the microphone is recording (with some Bluetooth headsets it first says "Opening microphone…" for a moment - wait for "Listening…" before you speak).
+2. **Hold Ctrl + Alt.** A small glass pill appears just above the taskbar once the microphone is recording, and its bars move with your voice (with some Bluetooth headsets it first says "Opening microphone" for a moment - wait for the bars before you speak).
 3. Say a sentence: *"This is my first dictation test."*
-4. **Release Ctrl + Alt.** After a moment the text is typed where your cursor was, followed by a space so the next dictation does not run into it.
+4. **Release Ctrl + Alt.** The pill shrinks to three dots while it works. After a moment the text is typed where your cursor was, followed by a space so the next dictation does not run into it, and the pill shows a tick and fades.
 
 You can hold the hotkey again straight away, even while the previous dictation is still being transcribed: results are inserted in the order you spoke them.
 
 The very first time, the app downloads the speech model (~466 MB for the default
-`small.en`). The overlay/tray will show download progress. This happens once.
+`small.en`). The tray icon's tooltip shows download progress, and if you dictate
+before it has finished the pill says "Getting ready". This happens once.
 
 ## 3. Settings
 
 Right-click the tray icon → **Settings…** (or double-click the icon).
 
 - **Hotkey** - pick the modifier combo to hold. Default Ctrl + Alt.
+- **Listening indicator** - how it shows it is listening: *Glass pill* (a small capsule above the taskbar with moving bars) or *Edge glow* (the taskbar edge lights up, with no shape). **Preview** plays a pretend dictation so you can see it. Either way it shows words only when something needs your attention.
 - **Speech model** - smaller = faster, larger = more accurate. See the table in the README.
 - **Microphone** - choose a specific input if you have several.
 - **Text insertion**:
@@ -69,11 +71,11 @@ internet:
 
 - **Nothing happens on the hotkey** - check the tray icon is present and "Enabled" is ticked in its menu. Some endpoint-security tools block low-level keyboard hooks; the log will note if the hook failed to install.
 - **"Model not ready, check log"** right after start-up - usually the Visual C++ Redistributable is missing or the CPU lacks AVX2 (see *Before you start*).
-- **"No microphone"** - grant microphone permission (Windows Settings → Privacy → Microphone) and pick the right device in Settings.
-- **"Microphone not ready"** - you released the hotkey before the microphone had started (common with Bluetooth headsets). Wait for "Listening…" before speaking.
-- **"No speech detected"** - you released too quickly, or the mic picked up no voice at all. Hold a touch longer and speak up.
-- **"Not inserted · … in clipboard — press Ctrl+V"** - the text could not be typed into the focused window (for example Windows rejected the keystrokes, or a key such as Shift stayed held down for several seconds), so it was left on the clipboard. Click where it should go and press Ctrl+V. A dictation finished just before you locked the PC is handled the same way.
-- **"Cancelled · hotkey interrupted"** - Windows took the keyboard while you were holding the hotkey (the Ctrl+Alt+Del screen or a UAC prompt, for example), so the recording was discarded rather than inserted somewhere unexpected.
+- **"No microphone found"** - grant microphone permission (Windows Settings → Privacy → Microphone) and pick the right device in Settings.
+- **"Microphone wasn't ready"** - you released the hotkey before the microphone had started (common with Bluetooth headsets). Wait for the moving bars before speaking.
+- **"Didn't catch that"** - you released too quickly, or the mic picked up no voice at all. Hold a touch longer and speak up.
+- **"Copied. Press Ctrl+V"** - the text could not be typed into the focused window (for example Windows rejected the keystrokes, or a key such as Shift stayed held down for several seconds), so it was left on the clipboard. Click where it should go and press Ctrl+V. A dictation finished just before you locked the PC is handled the same way.
+- **"Cancelled" when you did not cancel** - Windows took the keyboard while you were holding the hotkey (the Ctrl+Alt+Del screen or a UAC prompt, for example), so the recording was discarded rather than inserted somewhere unexpected.
 - **The chosen microphone is unplugged** - WinDictate records from the Windows default instead and goes back to your microphone when it is connected again; Settings shows it as "(not connected)".
-- **Text goes to the wrong window** - the overlay shows the target window title. Make sure the intended app has focus before holding the hotkey.
+- **Text goes to the wrong window** - text is inserted into whichever window has focus when it is ready. Keep the intended app in front until the tick appears.
 - **Logs** - tray menu → **Open log**, or `%APPDATA%\WinDictate\windictate.log`. No transcript text is logged unless you enable history.

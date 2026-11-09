@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Reliability fixes ahead of the pilot on Windows 11 laptops. No new features.
+Reliability fixes and a quieter look ahead of the pilot on Windows 11 laptops.
 The default hotkey (Ctrl+Alt), the keep-transcript-on-clipboard default and the
 target framework (.NET 8) are unchanged. Privacy guarantees still hold: audio
 stays in memory, no transcript or clipboard content is logged, no telemetry,
@@ -28,8 +28,8 @@ no new network calls.
   used, the text is typed instead. If it can't be inserted at all (a key held for
   several seconds, keystrokes rejected by Windows, or the PC locked before
   insertion), it is left on the clipboard, whatever the "Keep
-  transcript on the clipboard" setting says. The overlay then says "Not
-  inserted · … in clipboard — press Ctrl+V". Further undelivered dictations are
+  transcript on the clipboard" setting says. A notice then says "Copied. Press
+  Ctrl+V". Further undelivered dictations are
   added to it, and later dictations don't overwrite it, until you copy
   something else.
 - **Keystrokes could lag or the hotkey could stop working.** The keyboard hook
@@ -41,8 +41,8 @@ no new network calls.
 - **The microphone could stay open.** When Windows swallowed the hotkey's
   release (Ctrl+Alt+Del screen, UAC prompt, administrator window), recording
   went on for up to five minutes and was then inserted. A watchdog now cancels
-  such a dictation within about 0.2 s ("Cancelled · hotkey interrupted"; the
-  audio is discarded). Recording is also cancelled when the PC goes to sleep.
+  such a dictation within about 0.2 s ("Cancelled"; the audio is
+  discarded). Recording is also cancelled when the PC goes to sleep.
 - **Transcription could hang forever** after an attempt with no speech model
   loaded (a lock was never released).
 - **Consecutive dictations ran together** ("Hello there.How are you?"). Each
@@ -54,16 +54,31 @@ no new network calls.
 - **The chosen microphone changed after docking.** The microphone is now
   remembered by name and found again after devices are added or removed. If it
   is unplugged, the Windows default is used until it is back.
-- **"Listening…" appeared before the microphone was open.** It now appears once
+- **The listening indicator appeared before the microphone was open.** It now appears once
   audio is really being captured. A slow device (for example a Bluetooth
-  headset) shows "Opening microphone…" first, and releasing before it starts
-  says "Microphone not ready".
+  headset) shows "Opening microphone" first, and releasing before it starts
+  says "Microphone wasn't ready".
 - AI cleanup sends no `Authorization` header when the API key is blank
   (keyless gateways).
 - The Settings window's custom-words examples no longer name a company.
 
 ### Added
 
+- **A quieter listening indicator.** The dark box with status text is replaced
+  by a small glass pill just above the taskbar: bars that move with your voice
+  while you speak, three dots while it works, a tick when the text is in. Or
+  choose **Edge glow** in Settings, where the taskbar edge lights up and
+  breathes with your voice and there is no shape at all. Both are
+  click-through, never take focus, appear on the screen of the window you are
+  dictating into, follow Windows light and dark mode, and honour high contrast
+  and the "Animation effects" setting. Words appear only for a problem or a
+  wait ("Didn't catch that", "Copied. Press Ctrl+V", "Opening microphone").
+- Setting **"Listening indicator"** (glass pill or edge glow) with a Preview
+  button; `settings.json` key `Indicator` (`"pill"` or `"glow"`).
+- Windows smoke tests (`tests/WinDictate.UiSmoke`, workflow `ui-smoke`): they
+  open the real indicators and Settings window on a Windows desktop, type and
+  paste into a test window with the app's own code, start and stop the
+  keyboard hook, and upload pictures of what was drawn.
 - Setting **"Add a space after each dictation"** (on by default).
 - `settings.json` keys `AddTrailingSpace`, `MicDeviceName` and `MinVoicedMs`.
   Older settings files keep working: missing keys take their defaults, and a
