@@ -1,0 +1,75 @@
+<Window x:Class="WinDictate.UI.Indicators.GlassPillWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WinDictate indicator"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ShowActivated="False"
+        Focusable="False"
+        IsHitTestVisible="False"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        Width="400" Height="84"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        FontFamily="Segoe UI Variable Text, Segoe UI">
+    <!--
+        The window is a transparent, click-through canvas resting on the top edge of
+        the taskbar. Only the capsule inside it is drawn. The canvas is wider and
+        taller than the capsule so there is room for its shadow, for the worded
+        notices, and for the small rise when it appears.
+    -->
+    <Grid x:Name="Root" Opacity="0" RenderTransformOrigin="0.5,1">
+        <Grid.RenderTransform>
+            <TransformGroup>
+                <ScaleTransform x:Name="RootScale" ScaleX="1" ScaleY="1"/>
+                <TranslateTransform x:Name="RootShift" Y="0"/>
+            </TransformGroup>
+        </Grid.RenderTransform>
+
+        <Border x:Name="Capsule"
+                Width="132" Height="34"
+                CornerRadius="17"
+                BorderThickness="1"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,22">
+            <Border.Effect>
+                <DropShadowEffect x:Name="Shadow" BlurRadius="24" ShadowDepth="7" Direction="270" Opacity="0.2"/>
+            </Border.Effect>
+            <!-- Clipped so a notice's words never spill outside while the capsule is still widening. -->
+            <Grid ClipToBounds="True">
+                <!-- Listening: a small recording dot and a seven-bar waveform. -->
+                <StackPanel x:Name="ListenLayer" Orientation="Horizontal" Opacity="0"
+                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Ellipse x:Name="RecDot" Width="7" Height="7" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <StackPanel x:Name="Bars" Orientation="Horizontal" Height="18" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Working: three dots, filled in from code. -->
+                <StackPanel x:Name="WorkLayer" Orientation="Horizontal" Opacity="0"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                <!-- Done: a tick that draws itself. -->
+                <Path x:Name="Tick" Opacity="0" Width="16" Height="16"
+                      Data="M3.5,8.5 L6.5,11.5 L12.5,5"
+                      StrokeThickness="2"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                      StrokeDashArray="7 7" StrokeDashOffset="7"
+                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                <!-- Notice: the only state with words. -->
+                <StackPanel x:Name="NoticeLayer" Orientation="Horizontal" Opacity="0"
+                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Ellipse x:Name="NoticeDot" Width="7" Height="7" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="NoticeText" FontSize="13.5" FontWeight="Medium"
+                               MaxWidth="304" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
