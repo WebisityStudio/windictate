@@ -48,7 +48,17 @@ internal static class Motion
             Duration = Ms(milliseconds),
             EasingFunction = easing
         };
-        if (delayMilliseconds > 0) animation.BeginTime = TimeSpan.FromMilliseconds(delayMilliseconds);
+        if (delayMilliseconds > 0)
+        {
+            // Until a delayed animation starts, WPF shows the property's base value,
+            // not what was on screen. Pin the base to the current value first, so
+            // nothing jumps (or vanishes) during the wait.
+            var element = (DependencyObject)target;
+            double current = (double)element.GetValue(property);
+            target.BeginAnimation(property, null);
+            element.SetValue(property, current);
+            animation.BeginTime = TimeSpan.FromMilliseconds(delayMilliseconds);
+        }
         if (completed != null) animation.Completed += (_, _) => completed();
         target.BeginAnimation(property, animation);
     }

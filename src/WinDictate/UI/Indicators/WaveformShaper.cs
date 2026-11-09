@@ -13,8 +13,14 @@ internal sealed class WaveformShaper
     /// <summary>Height of a bar when nothing is being said (0..1 of full height).</summary>
     public const double Floor = 0.16;
 
-    /// <summary>Speech peaks sit well below full scale, so the raw level is lifted.</summary>
-    private const double Gain = 3.0;
+    /// <summary>
+    /// Microphones differ a lot in how loud they are, so the level is read in
+    /// decibels, the way loudness is heard: a quiet microphone still moves the
+    /// bars clearly, room hiss does not, and a loud one does not pin them.
+    /// At or below <see cref="QuietDb"/> the bars rest; at <see cref="LoudDb"/> they are full.
+    /// </summary>
+    private const double QuietDb = -52;
+    private const double LoudDb = -8;
     private const double AttackPerSecond = 18.0;
     private const double ReleasePerSecond = 6.0;
 
@@ -39,11 +45,13 @@ internal sealed class WaveformShaper
     /// <summary>Advance by <paramref name="dtSeconds"/> towards the latest microphone peak (0..1).</summary>
     public void Advance(double peak, double dtSeconds)
     {
-        if (double.IsNaN(peak)) peak = 0;
+        if (double.IsNaN(peak) || peak < 0) peak = 0;
         double dt = Math.Clamp(dtSeconds, 0, 0.1);
         _time += dt;
 
-        double target = Math.Clamp(peak * Gain, 0, 1);
+        double target = peak <= 0
+            ? 0
+            : Math.Clamp((20 * Math.Log10(peak) - QuietDb) / (LoudDb - QuietDb), 0, 1);
         double rate = target > Level ? AttackPerSecond : ReleasePerSecond;
         Level += (target - Level) * (1 - Math.Exp(-rate * dt));
 

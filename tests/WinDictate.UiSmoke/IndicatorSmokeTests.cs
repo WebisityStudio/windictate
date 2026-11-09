@@ -98,8 +98,8 @@ public class IndicatorSmokeTests
                 Assert.True(Ui.Capture(glow, $"glow-2-working-{look.Name}", look.Backdrop) > 500, "working: the edge should be drawn");
 
                 glow.ShowDone();
-                Ui.Pump(200);
-                Ui.Capture(glow, $"glow-3-done-{look.Name}", look.Backdrop);
+                Ui.Pump(150);
+                Assert.True(Ui.Capture(glow, $"glow-3-done-{look.Name}", look.Backdrop) > 2000, "done: should brighten before it fades, not vanish");
                 Ui.Pump(1300);
                 Assert.False(glow.IsVisible, "done: should fade out and hide");
 
