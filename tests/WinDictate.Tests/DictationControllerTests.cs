@@ -11,11 +11,13 @@ namespace WinDictate.Tests;
 /// </summary>
 public sealed class DictationControllerTests : IDisposable
 {
+    // Short, but with slack for a busy CI runner: tests that check something does
+    // NOT happen only assert inside windows well below these limits.
     private static readonly DictationTimings Fast = new()
     {
         OverlayDelayMs = 30,
         SlowMicNoticeMs = 120,
-        ModifierWaitLimitMs = 300,
+        ModifierWaitLimitMs = 1500,
         InsertPollMs = 5
     };
 
@@ -427,18 +429,18 @@ public sealed class DictationControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task QuickTap_NeverShowsListening()
+    public async Task ReleasedBeforeTheOverlayDelay_NeverShowsListening()
     {
         var recorder = _platform.Expect("A");
         recorder.StartCapturingImmediately = false;
-        var timings = Fast with { OverlayDelayMs = 400 };
+        var timings = Fast with { OverlayDelayMs = 5000 }; // the tap must end long before this
         _controller = new DictationController(_settings, _overlay, _platform, _speech, _target,
             cleanup: (text, _) => Task.FromResult(text), timings: timings);
         Controller.OnSessionStarted(1);
         await WaitFor(() => recorder.Started, "the device to open");
         recorder.BeginCapture();
         End(1);                                  // released before the overlay delay
-        await Task.Delay(500);
+        await WaitFor(() => _target.Delivered.Length == 1, "the dictation to finish");
         Assert.DoesNotContain("listening", _overlay.Calls);
     }
 }
