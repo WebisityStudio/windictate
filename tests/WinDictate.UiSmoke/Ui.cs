@@ -94,8 +94,9 @@ internal static class Ui
     /// Saves what a window is drawing right now, over a backdrop with grey bars
     /// standing in for text, as a PNG at twice real size.
     /// </summary>
+    /// <param name="plain">Leave out the grey bars: for an ordinary window rather than an overlay.</param>
     /// <returns>How many pixels the window itself drew (anything not fully transparent).</returns>
-    public static int Capture(Window window, string name, Color backdrop)
+    public static int Capture(Window window, string name, Color backdrop, bool plain = false)
     {
         window.UpdateLayout();
         if (window.Content is not FrameworkElement content)
@@ -118,7 +119,7 @@ internal static class Ui
             context.DrawRectangle(new SolidColorBrush(backdrop), null, new Rect(0, 0, width, height));
             var textLine = new SolidColorBrush(Color.FromArgb(0x55, 0x80, 0x88, 0x92));
             int row = 0;
-            for (double y = 10; y < height - 6; y += 14, row++)
+            for (double y = 10; !plain && y < height - 6; y += 14, row++)
                 context.DrawRectangle(textLine, null, new Rect(16, y, Math.Max(40, width - 32 - row % 3 * 40), 5));
             context.DrawImage(drawn, new Rect(0, 0, width, height));
         }

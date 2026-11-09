@@ -84,32 +84,124 @@ public class AppSmokeTests
         }
     });
 
-    [Fact]
-    public void SettingsWindow_Opens_ShowsTheSavedIndicator_AndPreviewsIt() => Ui.Run(() =>
+    /// <summary>
+    /// The Settings window in its Windows 11 look, light and dark: it opens, shows
+    /// the saved choices in plain words, opens Advanced without leaving the screen,
+    /// keeps the plain quality choice and the model list in step, and only claims
+    /// that everything stays on the PC while that is true.
+    /// </summary>
+    [Theory]
+    [InlineData("light")]
+    [InlineData("dark")]
+    public void SettingsWindow_ShowsTheSavedChoices_AndItsAdvancedPart(string theme) => Ui.Run(() =>
     {
+        bool dark = theme == "dark";
         IndicatorTheme.ForcedAnimations = false;
-        var settings = new AppSettings { Indicator = "glow" };
-        var window = new SettingsWindow(settings);
+        var settings = new AppSettings { Indicator = "glow", Model = "medium.en", Hotkey = "Ctrl+Shift" };
+        var window = new SettingsWindow(settings) { ThemeMode = dark ? ThemeMode.Dark : ThemeMode.Light };
         try
         {
             window.Show();
-            Ui.Pump(400);
-            Assert.True(window.IndicatorGlowRadio.IsChecked == true, "the saved style should be selected");
+            Ui.Pump(700);
+
+            // What Windows 11 puts behind the window (its glass) cannot be captured here, so the
+            // pictures use the plain colour Windows falls back to when transparency is off.
+            Color fallback = dark ? Color.FromRgb(0x20, 0x20, 0x20) : Color.FromRgb(0xF3, 0xF3, 0xF3);
+            Color behind = window.Background is System.Windows.Media.SolidColorBrush own && own.Color.A == 0xFF ? own.Color : fallback;
+            Ui.Note($"settings-{theme}", $"window background reported by the theme: {window.Background}; picture drawn over #{behind.R:X2}{behind.G:X2}{behind.B:X2}");
+
+            Assert.True(window.IndicatorGlowRadio.IsChecked == true, "the saved indicator should be selected");
             Assert.True(window.TrailingSpaceBox.IsChecked == true, "new settings should load their defaults");
-            Ui.Capture(window, "settings-window", Color.FromRgb(0xFA, 0xFA, 0xFA));
+            Assert.True(window.KeepClipboardBox.IsChecked == true);
+            Assert.True(window.LogTranscripts.IsChecked == false);
+            Assert.True(window.QualityAccurate.IsChecked == true, "medium.en is the Accurate choice");
+            Assert.Equal(new[] { "Ctrl", "Shift" }, window.ShortcutKeys.Items.Cast<string>().ToArray());
+            Assert.False(string.IsNullOrWhiteSpace(window.StatusText.Text));
+            Assert.Equal(Visibility.Collapsed, window.AdvancedPanel.Visibility);
+            Assert.True(window.SaveButton.ActualWidth > 40 && window.SaveButton.ActualHeight > 20, "the Save button should be laid out");
+            Assert.True(Ui.Capture(window, $"settings-{theme}", behind, plain: true) > 5000, "the window should draw its content");
+
+            // Advanced opens below, and the window stays within the screen.
+            double before = window.ActualHeight;
+            window.AdvancedToggle.IsChecked = true;
+            Ui.Pump(500);
+            Assert.Equal(Visibility.Visible, window.AdvancedPanel.Visibility);
+            Assert.True(window.ActualHeight >= before, "the window should not shrink when Advanced opens");
+            Assert.True(window.ActualHeight <= SystemParameters.WorkArea.Height, "the window must fit on the screen");
+            Assert.True(window.Top + window.ActualHeight <= SystemParameters.WorkArea.Bottom + 1, "the window must not hang off the bottom of the screen");
+            Assert.Equal("medium.en", (window.ModelBox.SelectedItem as ComboBoxItem)?.Tag);
+            Ui.Capture(window, $"settings-{theme}-advanced", behind, plain: true);
+
+            // The plain quality choice and the model list say the same thing.
+            window.QualityFast.IsChecked = true;
+            Ui.Pump(100);
+            Assert.Equal("base.en", (window.ModelBox.SelectedItem as ComboBoxItem)?.Tag);
+            window.ModelBox.SelectedItem = window.ModelBox.Items.OfType<ComboBoxItem>().First(item => (string?)item.Tag == "tiny.en");
+            Ui.Pump(100);
+            Assert.True(window.QualityFast.IsChecked == false && window.QualityBalanced.IsChecked == false && window.QualityAccurate.IsChecked == false,
+                "a model outside the three choices selects none of them");
+            Assert.StartsWith("Using tiny.en", window.QualityRow.Tag as string);
+
+            // "Everything stays on this PC" is only said while it is true.
+            window.CleanupUrl.Text = "https://gateway.example.test/v1";
+            window.CleanupEnabled.IsChecked = true;
+            Ui.Pump(100);
+            Assert.Equal("AI cleanup is on: text is sent to gateway.example.test", window.StatusText.Text);
+            window.CleanupEnabled.IsChecked = false;
+            Ui.Pump(100);
+            Assert.DoesNotContain("AI cleanup", window.StatusText.Text);
 
             // The Preview button plays a pretend dictation; it must not throw or steal the window.
             window.IndicatorPillRadio.IsChecked = true;
             window.IndicatorPreviewButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             Ui.Pump(600);
             Assert.True(window.IsVisible);
+
+            // The microphone test must cope with whatever this machine has, including no microphone at all.
+            window.MicTestButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Ui.Pump(900);
+            Ui.Note($"settings-{theme}", $"microphone test after 0.9 s: button \"{window.MicTestButton.Content}\", line \"{window.MicRow.Tag}\"");
+            Assert.True(window.IsVisible);
         }
         finally
         {
             window.Close();
+            Ui.Pump(300); // lets a microphone opened by the test close again
             IndicatorTheme.ForcedAnimations = null;
         }
     });
+
+    /// <summary>
+    /// "Start with Windows" against the real registry of the signed-in user, under
+    /// a name of its own so a real WinDictate entry on this machine is never touched.
+    /// </summary>
+    [Fact]
+    public void StartWithWindows_WritesAndRemovesItsEntry()
+    {
+        const string name = "WinDictate-smoke-test";
+        const string exe = @"C:\Program Files\WinDictate smoke\WinDictate.exe";
+        const string runKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        try
+        {
+            Assert.Equal(AutoStart.State.Off, AutoStart.Read(name, exe));
+
+            Assert.True(AutoStart.Set(true, name, exe));
+            Assert.Equal(AutoStart.State.On, AutoStart.Read(name, exe));
+            using (var run = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(runKey))
+                Assert.Equal("\"" + exe + "\"", run?.GetValue(name) as string);
+            // An entry for a copy of the app somewhere else is not "on" for this one.
+            Assert.Equal(AutoStart.State.Off, AutoStart.Read(name, @"D:\Elsewhere\WinDictate.exe"));
+
+            Assert.True(AutoStart.Set(false, name, exe));
+            Assert.Equal(AutoStart.State.Off, AutoStart.Read(name, exe));
+            using (var run = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(runKey))
+                Assert.Null(run?.GetValue(name));
+        }
+        finally
+        {
+            AutoStart.Set(false, name, exe);
+        }
+    }
 
     [Fact]
     public void Clipboard_RoundTrips_WithoutTheUiThread() => Ui.Run(() =>

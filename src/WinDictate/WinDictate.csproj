@@ -16,6 +16,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- WPF0001: the Settings window uses WPF's Windows 11 theme (ThemeMode), which .NET still labels experimental. -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

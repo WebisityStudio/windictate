@@ -22,6 +22,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <RootNamespace>WinDictate.UiSmoke</RootNamespace>
+    <!-- WPF0001: the tests force the Settings window's light and dark looks through WPF's ThemeMode. -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
