@@ -16,7 +16,11 @@ public sealed class AppSettings
     public int ClipboardRestoreDelayMs { get; set; } = 300;
     public int MicDeviceIndex { get; set; } = -1; // -1 = system default
     public int Threads { get; set; } = 0; // 0 = auto
+    // Per-buffer level that always counts as voice; quieter buffers still count
+    // when well above the clip's own background (see SpeechGate). Same name and
+    // default as before, so existing settings.json files keep their value.
     public double SilenceThreshold { get; set; } = 0.004;
+    public int MinVoicedMs { get; set; } = 120; // reject a clip only if it has less voiced audio than this
     public bool LogTranscripts { get; set; } = false;
     public CleanupSettings Cleanup { get; set; } = new();
 
@@ -52,8 +56,7 @@ public sealed class AppSettings
         }
         try
         {
-            var json = File.ReadAllText(SettingsPath);
-            return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+            return Parse(File.ReadAllText(SettingsPath));
         }
         catch (Exception ex)
         {
@@ -70,13 +73,20 @@ public sealed class AppSettings
         try
         {
             Directory.CreateDirectory(DataDir);
-            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, JsonOptions));
+            File.WriteAllText(SettingsPath, Serialize(settings));
         }
         catch (Exception ex)
         {
             Logger.Error("Failed to save settings", ex);
         }
     }
+
+    /// <summary>Reads settings JSON. Properties missing from older files keep their defaults.</summary>
+    internal static AppSettings Parse(string json) =>
+        JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+
+    internal static string Serialize(AppSettings settings) =>
+        JsonSerializer.Serialize(settings, JsonOptions);
 }
 
 public sealed class CleanupSettings

@@ -4,8 +4,6 @@ using NAudio.Wave;
 
 namespace WinDictate.Core;
 
-public sealed record RecordingResult(byte[] WavBytes, double DurationSeconds, double AverageLevel);
-
 /// <summary>
 /// Records microphone audio to an in-memory 16 kHz mono 16-bit WAV, which is
 /// exactly the input format Whisper expects. One instance per dictation session.
@@ -21,13 +19,13 @@ public sealed class AudioRecorder : IDisposable
     private readonly TaskCompletionSource<bool> _stopped =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _writeLock = new();
-    private double _sumAbs;
+    private readonly List<AudioLevel> _levels = new();
     private long _sampleCount;
     private bool _stopping;
 
     public void Start(int deviceIndex)
     {
-        var format = new WaveFormat(16000, 16, 1);
+        var format = new WaveFormat(SpeechGate.SampleRate, 16, 1);
         _ms = new MemoryStream();
         _writer = new WaveFileWriter(new IgnoreDisposeStream(_ms), format);
         _waveIn = new WaveInEvent
@@ -48,13 +46,20 @@ public sealed class AudioRecorder : IDisposable
             if (_stopping || _writer == null) return;
             _writer.Write(e.Buffer, 0, e.BytesRecorded);
             float peak = 0;
+            double sumAbs = 0;
+            int samples = 0;
             for (int i = 0; i + 1 < e.BytesRecorded; i += 2)
             {
                 short sample = BitConverter.ToInt16(e.Buffer, i);
                 float abs = Math.Abs((int)sample) / 32768f;
                 if (abs > peak) peak = abs;
-                _sumAbs += abs;
-                _sampleCount++;
+                sumAbs += abs;
+                samples++;
+            }
+            if (samples > 0)
+            {
+                _levels.Add(new AudioLevel(samples, (float)(sumAbs / samples)));
+                _sampleCount += samples;
             }
             LevelChanged?.Invoke(peak);
         }
@@ -73,11 +78,9 @@ public sealed class AudioRecorder : IDisposable
             _stopping = true;
             _writer.Dispose(); // finalizes the WAV header inside _ms
             _writer = null;
+            double duration = _sampleCount / (double)SpeechGate.SampleRate;
+            return new RecordingResult(_ms.ToArray(), duration, _levels.ToArray());
         }
-
-        double duration = _sampleCount / 16000.0;
-        double average = _sampleCount > 0 ? _sumAbs / _sampleCount : 0;
-        return new RecordingResult(_ms.ToArray(), duration, average);
     }
 
     public void Dispose()

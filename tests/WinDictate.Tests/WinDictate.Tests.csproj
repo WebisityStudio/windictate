@@ -20,6 +20,7 @@
     <Compile Include="..\..\src\WinDictate\Core\HotkeyMonitor.cs" Link="Linked\HotkeyMonitor.cs" />
     <Compile Include="..\..\src\WinDictate\Core\Logger.cs" Link="Linked\Logger.cs" />
     <Compile Include="..\..\src\WinDictate\Core\NativeMethods.cs" Link="Linked\NativeMethods.cs" />
+    <Compile Include="..\..\src\WinDictate\Core\SpeechGate.cs" Link="Linked\SpeechGate.cs" />
     <Compile Include="..\..\src\WinDictate\Core\Transcriber.cs" Link="Linked\Transcriber.cs" />
     <Compile Include="..\..\src\WinDictate\Core\TranscriptText.cs" Link="Linked\TranscriptText.cs" />
   </ItemGroup>

@@ -187,7 +187,9 @@ public sealed class DictationController : IDisposable
                     await HideOverlay();
                 return;
             }
-            if (rec.DurationSeconds < 0.3 || rec.AverageLevel < _settings.SilenceThreshold)
+            // Reject only clips without real voiced audio; a quiet microphone or a
+            // long clip with pauses used to fail the old whole-clip average.
+            if (rec.DurationSeconds < 0.3 || !SpeechGate.HasVoice(rec, _settings))
             {
                 await ShowFlash("No speech detected", false);
                 return;
