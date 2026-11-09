@@ -41,6 +41,51 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int vKey);
 
+    // ----- Message loop (keyboard hook thread) -----
+
+    public const uint WM_APP = 0x8000;
+    public const uint PM_NOREMOVE = 0x0000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public IntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public POINT pt;
+    }
+
+    /// <summary>Returns &gt; 0 for a message, 0 for WM_QUIT, -1 on error.</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern int GetMessageW(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool PeekMessageW(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax, uint wRemoveMsg);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool TranslateMessage(ref MSG lpMsg);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr DispatchMessageW(ref MSG lpMsg);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool PostThreadMessageW(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+
     // ----- Foreground window info -----
 
     [DllImport("user32.dll")]
@@ -49,11 +94,15 @@ internal static class NativeMethods
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetWindowTextW(IntPtr hWnd, StringBuilder text, int count);
 
-    public static string GetForegroundWindowTitle()
+    /// <summary>
+    /// Short title of a window for the overlay. For a window of this process
+    /// GetWindowText sends WM_GETTEXT, so call it on the UI thread (never on the
+    /// keyboard-hook thread); for other processes it reads the caption directly.
+    /// </summary>
+    public static string GetWindowTitle(IntPtr hwnd)
     {
         try
         {
-            var hwnd = GetForegroundWindow();
             if (hwnd == IntPtr.Zero) return "the active window";
             var sb = new StringBuilder(256);
             GetWindowTextW(hwnd, sb, sb.Capacity);

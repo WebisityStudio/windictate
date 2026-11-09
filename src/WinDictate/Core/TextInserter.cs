@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Windows.Threading;
 
 namespace WinDictate.Core;
 
@@ -19,10 +18,12 @@ public enum InsertOutcome
 /// be a text box and the insertion landed nowhere. With it off, paste mode restores
 /// the previous clipboard (held in memory only, never logged) and type mode never
 /// touches the clipboard at all.
+/// Runs on a worker thread; clipboard calls go through <see cref="ClipboardAccess"/>
+/// so they never block the UI thread.
 /// </summary>
 public static class TextInserter
 {
-    public static async Task<InsertOutcome> InsertAsync(string text, AppSettings settings, Dispatcher dispatcher)
+    public static async Task<InsertOutcome> InsertAsync(string text, AppSettings settings)
     {
         // If the user still physically holds Ctrl/Alt from the hotkey, sending
         // Ctrl+V now would become Ctrl+Alt+V (or arbitrary shortcuts in type mode).
@@ -30,7 +31,7 @@ public static class TextInserter
         // words shouldn't be lost, so leave them on the clipboard when allowed.
         if (!await WaitForModifierReleaseAsync(1500))
         {
-            if (settings.KeepInClipboard && TrySetClipboard(text, dispatcher))
+            if (settings.KeepInClipboard && await ClipboardAccess.TrySetTextAsync(text))
                 return InsertOutcome.CopiedOnly;
             return InsertOutcome.Failed;
         }
@@ -39,7 +40,7 @@ public static class TextInserter
         {
             NativeMethods.SendUnicodeText(text);
             if (settings.KeepInClipboard)
-                TrySetClipboard(text, dispatcher); // backup copy; the text is already typed
+                await ClipboardAccess.TrySetTextAsync(text); // backup copy; the text is already typed
             return InsertOutcome.Inserted;
         }
 
@@ -47,26 +48,15 @@ public static class TextInserter
         bool hadText = false;
         if (!settings.KeepInClipboard)
         {
-            dispatcher.Invoke(() =>
-            {
-                try
-                {
-                    if (System.Windows.Forms.Clipboard.ContainsText())
-                    {
-                        previous = System.Windows.Forms.Clipboard.GetText();
-                        hadText = true;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warn("Clipboard read failed: " + ex.Message);
-                }
-            });
+            var (ok, current) = await ClipboardAccess.TryGetTextAsync();
+            hadText = ok && current != null;
+            previous = current;
         }
 
         // If the transcript never made it onto the clipboard, Ctrl+V would paste
-        // whatever was there before — let the failure abort the whole insertion.
-        dispatcher.Invoke(() => System.Windows.Forms.Clipboard.SetDataObject(text, true, 10, 50));
+        // whatever was there before — abort the insertion instead.
+        if (!await ClipboardAccess.TrySetTextAsync(text))
+            return InsertOutcome.Failed;
 
         NativeMethods.SendCtrlV();
 
@@ -75,35 +65,11 @@ public static class TextInserter
 
         await Task.Delay(Math.Max(100, settings.ClipboardRestoreDelayMs));
 
-        dispatcher.Invoke(() =>
-        {
-            try
-            {
-                if (hadText && previous != null)
-                    System.Windows.Forms.Clipboard.SetDataObject(previous, true, 10, 50);
-                else
-                    System.Windows.Forms.Clipboard.Clear();
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn("Clipboard restore failed: " + ex.Message);
-            }
-        });
+        if (hadText && previous != null)
+            await ClipboardAccess.TrySetTextAsync(previous);
+        else
+            await ClipboardAccess.TryClearAsync();
         return InsertOutcome.Inserted;
-    }
-
-    private static bool TrySetClipboard(string text, Dispatcher dispatcher)
-    {
-        try
-        {
-            dispatcher.Invoke(() => System.Windows.Forms.Clipboard.SetDataObject(text, true, 10, 50));
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn("Clipboard write failed: " + ex.Message);
-            return false;
-        }
     }
 
     private static async Task<bool> WaitForModifierReleaseAsync(int timeoutMs)

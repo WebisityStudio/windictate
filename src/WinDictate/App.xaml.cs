@@ -59,17 +59,21 @@ public partial class App : Application
         _hotkeys.SessionEnded += cancelled => _controller!.OnSessionEnded(cancelled);
         _controller.MaxDurationReached += () => _hotkeys!.Reset();
 
+        // The hook runs on its own thread and calls the hotkey state machine
+        // directly from the hook callback (see KeyboardHook and HotkeyMonitor).
         _hook = new KeyboardHook();
         _hook.KeyEvent += (vk, down) => _hotkeys!.OnKeyEvent(vk, down);
 
         // Stop recording if the workstation locks or disconnects — the key-up
         // events land on the secure desktop and are never delivered, so without
         // this the mic would keep capturing the room until MaxRecordSeconds.
+        // Unlock and resume re-install the hook, which Windows may have dropped.
         Microsoft.Win32.SystemEvents.SessionSwitch += OnSessionSwitch;
+        Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
         try
         {
-            _hook.Install();
+            _hook.Start();
         }
         catch (Exception ex)
         {
@@ -157,6 +161,31 @@ public partial class App : Application
             _hotkeys?.Reset();
             _controller?.OnSessionEnded(true);
         }
+        else if (e.Reason is Microsoft.Win32.SessionSwitchReason.SessionUnlock
+                          or Microsoft.Win32.SessionSwitchReason.SessionLogon
+                          or Microsoft.Win32.SessionSwitchReason.RemoteConnect
+                          or Microsoft.Win32.SessionSwitchReason.ConsoleConnect)
+        {
+            RefreshHook($"session {e.Reason}");
+        }
+    }
+
+    private void OnPowerModeChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == Microsoft.Win32.PowerModes.Resume)
+            RefreshHook("resume");
+    }
+
+    /// <summary>
+    /// Windows silently drops a low-level hook that once ran too long, and gives
+    /// no notice, so re-register it whenever it may have been lost. Key state
+    /// from before is stale, so forget it as well.
+    /// </summary>
+    private void RefreshHook(string reason)
+    {
+        Logger.Info($"Re-installing keyboard hook after {reason}");
+        _hook?.Reinstall();
+        _hotkeys?.Reset();
     }
 
     private bool _downloadNotified;
@@ -199,6 +228,7 @@ public partial class App : Application
     {
         Logger.Info("Shutting down");
         Microsoft.Win32.SystemEvents.SessionSwitch -= OnSessionSwitch;
+        Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
         _hook?.Dispose();
         _controller?.Dispose();

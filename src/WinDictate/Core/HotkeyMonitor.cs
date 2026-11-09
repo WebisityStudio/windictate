@@ -19,7 +19,9 @@ public sealed class HotkeyMonitor
     public event Action? SessionStarted;
     public event Action<bool>? SessionEnded; // true = cancelled
 
-    public bool Enabled { get; set; } = true;
+    // Toggled from the UI thread, read on the keyboard-hook thread.
+    private volatile bool _enabled = true;
+    public bool Enabled { get => _enabled; set => _enabled = value; }
     public string ActiveHotkeyText { get; private set; } = "";
 
     /// <summary>
@@ -127,7 +129,7 @@ public sealed class HotkeyMonitor
 
             bool allDown = _required.All(t => t.Any(v => _down.Contains(v)));
 
-            if (!_session && allDown && !_poisoned && Enabled)
+            if (!_session && allDown && !_poisoned && _enabled)
             {
                 _session = true;
                 started = true;

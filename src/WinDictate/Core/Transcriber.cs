@@ -25,21 +25,28 @@ public sealed class Transcriber : IDisposable
 
     public bool IsReady => _factory != null;
 
+    /// <summary>
+    /// Downloads (once) and loads the model. Never does the slow work on the
+    /// caller's thread: every await leaves the caller's context, and the model
+    /// load itself (WhisperFactory.FromPath reads and initialises the whole model
+    /// synchronously) runs on the thread pool. Callers on the UI thread still
+    /// should not wait for it.
+    /// </summary>
     public async Task EnsureReadyAsync(string model, IProgress<string>? status, CancellationToken ct = default)
     {
-        await _gate.WaitAsync(ct);
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             var path = ModelPath(model);
             if (!File.Exists(path))
-                await DownloadModelAsync(model, path, status, ct);
+                await DownloadModelAsync(model, path, status, ct).ConfigureAwait(false);
 
             if (_factory == null || _loadedPath != path)
             {
                 status?.Report("Loading speech model…");
                 _factory?.Dispose();
                 _factory = null;
-                _factory = WhisperFactory.FromPath(path);
+                _factory = await Task.Run(() => WhisperFactory.FromPath(path), ct).ConfigureAwait(false);
                 _loadedPath = path;
                 Logger.Info($"Loaded model {model} ({new FileInfo(path).Length / 1024 / 1024} MB)");
             }
@@ -57,12 +64,12 @@ public sealed class Transcriber : IDisposable
         Logger.Info($"Downloading model {model} from {url}");
         status?.Report($"Downloading {model} model…");
 
-        using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         long total = response.Content.Headers.ContentLength ?? -1;
 
         var tmp = path + ".part";
-        await using (var source = await response.Content.ReadAsStreamAsync(ct))
+        await using (var source = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false))
         await using (var target = File.Create(tmp))
         {
             var buffer = new byte[1 << 16];
@@ -78,14 +85,14 @@ public sealed class Transcriber : IDisposable
                 int read;
                 try
                 {
-                    read = await source.ReadAsync(buffer, readCts.Token);
+                    read = await source.ReadAsync(buffer, readCts.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                 {
                     throw new IOException($"Model download stalled (no data for 30 s). Check your network connection and retry.");
                 }
                 if (read == 0) break;
-                await target.WriteAsync(buffer.AsMemory(0, read), ct);
+                await target.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
                 done += read;
                 if (total > 0)
                 {
@@ -104,7 +111,7 @@ public sealed class Transcriber : IDisposable
 
     public async Task<string> TranscribeAsync(Stream wav, AppSettings settings, CancellationToken ct = default)
     {
-        await _gate.WaitAsync(ct);
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             // Check inside the gate: EnsureReadyAsync sets _factory=null before
@@ -124,10 +131,13 @@ public sealed class Transcriber : IDisposable
             if (!string.IsNullOrWhiteSpace(settings.VocabularyHint))
                 builder = builder.WithPrompt(settings.VocabularyHint);
 
-            await using var processor = builder.Build();
+            var processor = builder.Build();
             var sb = new StringBuilder();
-            await foreach (var segment in processor.ProcessAsync(wav, ct))
-                sb.Append(segment.Text);
+            await using (processor.ConfigureAwait(false))
+            {
+                await foreach (var segment in processor.ProcessAsync(wav, ct).ConfigureAwait(false))
+                    sb.Append(segment.Text);
+            }
 
             // Strips non-speech annotations like [BLANK_AUDIO] or (coughing) but
             // keeps dictated content in brackets.

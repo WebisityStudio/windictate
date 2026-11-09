@@ -25,7 +25,6 @@ public sealed class DictationController : IDisposable
     private readonly object _sync = new();
     private Session? _current;
     private bool _busy;        // a transcription pipeline is running
-    private bool _modelWarming;
 
     private sealed class Session
     {
@@ -41,19 +40,24 @@ public sealed class DictationController : IDisposable
         _dispatcher = dispatcher;
         _overlay = overlay;
         _settings = settings;
-        _ = WarmUpModelAsync();
+        StartWarmUp();
     }
 
     public void UpdateSettings(AppSettings settings)
     {
         _settings = settings;
-        _ = WarmUpModelAsync();
+        StartWarmUp();
     }
+
+    /// <summary>
+    /// Downloads/loads the model on the thread pool. Called from the UI thread,
+    /// which must never wait for the multi-second model load. Overlapping calls
+    /// queue on the transcriber's gate, so a model change is never skipped.
+    /// </summary>
+    private void StartWarmUp() => _ = Task.Run(WarmUpModelAsync);
 
     private async Task WarmUpModelAsync()
     {
-        if (_modelWarming) return;
-        _modelWarming = true;
         try
         {
             var progress = new Progress<string>(s => StatusChanged?.Invoke(s));
@@ -64,10 +68,6 @@ public sealed class DictationController : IDisposable
         {
             Logger.Error("Model warm-up failed", ex);
             StatusChanged?.Invoke("Model not ready, check log");
-        }
-        finally
-        {
-            _modelWarming = false;
         }
     }
 
@@ -83,7 +83,9 @@ public sealed class DictationController : IDisposable
             _current = session;
         }
 
-        string target = NativeMethods.GetForegroundWindowTitle();
+        // Runs on the keyboard-hook thread: only grab the handle here. The title
+        // is read on the UI thread (GetWindowText may send WM_GETTEXT).
+        IntPtr target = NativeMethods.GetForegroundWindow();
 
         session.StartTask = Task.Run<AudioRecorder?>(() =>
         {
@@ -123,7 +125,7 @@ public sealed class DictationController : IDisposable
             try
             {
                 await Task.Delay(180, token);
-                _overlay.ShowListening(target);
+                _overlay.ShowListening(NativeMethods.GetWindowTitle(target));
             }
             catch (TaskCanceledException) { }
         });
@@ -224,7 +226,7 @@ public sealed class DictationController : IDisposable
                 return;
             }
             await ShowStatus("Inserting…");
-            var outcome = await TextInserter.InsertAsync(text, _settings, _dispatcher);
+            var outcome = await TextInserter.InsertAsync(text, _settings);
             if (outcome == InsertOutcome.Failed)
             {
                 await ShowFlash("Release keys then re-dictate", false);
