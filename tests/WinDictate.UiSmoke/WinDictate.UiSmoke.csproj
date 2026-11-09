@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows-only smoke tests for the listening indicators. They open the real
+    windows, drive every state, check each one stays click-through, unfocused
+    and resting on the taskbar edge, and save pictures of what was drawn.
+
+    Run by .github/workflows/ui-smoke.yml, or locally on Windows with
+    `dotnet test tests/WinDictate.UiSmoke`. They are kept apart from the
+    cross-platform unit tests because they need a Windows desktop session.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>WinDictate.UiSmoke</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WinDictate\WinDictate.csproj" />
+  </ItemGroup>
+
+</Project>

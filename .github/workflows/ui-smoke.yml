@@ -1,0 +1,44 @@
+name: ui-smoke
+
+# Opens the real listening indicators on a Windows desktop, walks them through
+# every state, and uploads pictures of what was drawn. Separate from `build`
+# because it needs a desktop session and only matters when the UI changes.
+
+on:
+  push:
+    branches: [ 'feature/**' ]
+    paths:
+      - 'src/WinDictate/UI/**'
+      - 'tests/WinDictate.UiSmoke/**'
+      - '.github/workflows/ui-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Run the indicator smoke tests
+        env:
+          UI_SMOKE_OUT: '${{ github.workspace }}\ui-smoke-out'
+        run: dotnet test tests/WinDictate.UiSmoke/WinDictate.UiSmoke.csproj -c Release --logger "console;verbosity=normal"
+
+      - name: Upload the pictures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-smoke-pictures
+          path: ui-smoke-out
+          if-no-files-found: warn
+          retention-days: 14
