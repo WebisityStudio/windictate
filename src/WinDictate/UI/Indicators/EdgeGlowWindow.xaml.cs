@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using Color = System.Windows.Media.Color;
 
 namespace WinDictate.UI.Indicators;
@@ -26,6 +27,7 @@ public partial class EdgeGlowWindow : Window
     private enum Phase { Hidden, Listening, Working, Done }
 
     private readonly WaveformShaper _shaper = new();
+    private readonly DispatcherTimer _autoHide;
     private Phase _phase = Phase.Hidden;
     private float _peak;
     private TimeSpan _lastFrame;
@@ -36,6 +38,12 @@ public partial class EdgeGlowWindow : Window
     public EdgeGlowWindow()
     {
         InitializeComponent();
+        _autoHide = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher);
+        _autoHide.Tick += (_, _) =>
+        {
+            _autoHide.Stop();
+            FadeOutAndHide();
+        };
         SourceInitialized += (_, _) => IndicatorNative.MakeOverlay(new WindowInteropHelper(this).Handle);
     }
 
@@ -76,7 +84,7 @@ public partial class EdgeGlowWindow : Window
     public void ShowDone()
     {
         if (_disposed) return;
-        bool fresh = Prepare();
+        Prepare();
         _phase = Phase.Done;
         StopRendering();
         StopSweep();
@@ -85,20 +93,19 @@ public partial class EdgeGlowWindow : Window
         Motion.To(Halo, OpacityProperty, 0.85, 180);
         Motion.To(HaloScale, ScaleTransform.ScaleYProperty, 1.0, 180, Motion.Smooth);
         Motion.To(Line, OpacityProperty, 1, 180);
-        if (fresh) Motion.Set(Root, OpacityProperty, 1);
+        Motion.To(Root, OpacityProperty, 1, 120);
 
-        // ...then fade.
-        int generation = _generation;
-        Motion.To(Root, OpacityProperty, 0, 700, delayMilliseconds: 220, completed: () =>
-        {
-            if (generation == _generation) Rest();
-        });
+        // ...hold it for a moment, then fade. A timer does the holding, so the
+        // confirmation is still seen when Windows animations are switched off
+        // (it then stays a little longer, as there is no fade to notice).
+        HideAfter(IndicatorTheme.AnimationsEnabled ? 220 : 600);
     }
 
     public void HideNow()
     {
         if (_disposed) return;
         _generation++;
+        _autoHide.Stop();
         Motion.Set(Root, OpacityProperty, 0);
         Rest();
     }
@@ -108,14 +115,31 @@ public partial class EdgeGlowWindow : Window
         if (_disposed) return;
         _disposed = true;
         _generation++;
+        _autoHide.Stop();
         StopRendering();
         Close();
+    }
+
+    private void HideAfter(double milliseconds)
+    {
+        _autoHide.Interval = TimeSpan.FromMilliseconds(milliseconds);
+        _autoHide.Start();
+    }
+
+    private void FadeOutAndHide()
+    {
+        int generation = _generation;
+        Motion.To(Root, OpacityProperty, 0, 700, completed: () =>
+        {
+            if (generation == _generation) Rest();   // otherwise it was shown again meanwhile
+        });
     }
 
     /// <returns>true when the glow was not on screen.</returns>
     private bool Prepare()
     {
         _generation++;
+        _autoHide.Stop();
         ApplyPalette();
 
         bool fresh = _phase == Phase.Hidden || !IsVisible;

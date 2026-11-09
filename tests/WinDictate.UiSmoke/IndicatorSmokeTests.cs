@@ -21,12 +21,27 @@ public class IndicatorSmokeTests
         ("dark", IndicatorPalette.Dark, Color.FromRgb(0x1D, 0x21, 0x27)),
     };
 
-    [Fact]
-    public void GlassPill_GoesThroughEveryState_AndStaysOutOfTheWay() => Ui.Run(() =>
+    /// <summary>
+    /// Every look, with Windows animations on and off. Server images (and many
+    /// virtual desktops) ship with animations off, which takes a different path
+    /// through the code, so both must be exercised whatever the machine is set to.
+    /// </summary>
+    private static IEnumerable<(string Tag, IndicatorPalette Palette, Color Backdrop, bool Animated)> Cases()
     {
         foreach (var look in Looks)
         {
+            yield return (look.Name, look.Palette, look.Backdrop, true);
+            yield return (look.Name + "-still", look.Palette, look.Backdrop, false);
+        }
+    }
+
+    [Fact]
+    public void GlassPill_GoesThroughEveryState_AndStaysOutOfTheWay() => Ui.Run(() =>
+    {
+        foreach (var look in Cases())
+        {
             IndicatorTheme.Forced = look.Palette;
+            IndicatorTheme.ForcedAnimations = look.Animated;
             var pill = new GlassPillWindow();
             try
             {
@@ -34,16 +49,16 @@ public class IndicatorSmokeTests
                 Ui.Speak(pill.SetLevel, 900);
                 Assert.True(pill.IsVisible, "listening: should be on screen");
                 AssertIsQuietOverlay(pill);
-                Assert.True(Ui.Capture(pill, $"pill-1-listening-{look.Name}", look.Backdrop) > 400, "listening: the capsule and waveform should be drawn");
+                Assert.True(Ui.Capture(pill, $"pill-1-listening-{look.Tag}", look.Backdrop) > 400, "listening: the capsule and waveform should be drawn");
 
                 pill.ShowWorking();
                 Ui.Pump(800);
                 Assert.True(pill.IsVisible, "working: should stay on screen");
-                Assert.True(Ui.Capture(pill, $"pill-2-working-{look.Name}", look.Backdrop) > 200, "working: the capsule should be drawn");
+                Assert.True(Ui.Capture(pill, $"pill-2-working-{look.Tag}", look.Backdrop) > 200, "working: the capsule should be drawn");
 
                 pill.ShowDone();
                 Ui.Pump(600);
-                Assert.True(Ui.Capture(pill, $"pill-3-done-{look.Name}", look.Backdrop) > 200, "done: the capsule and tick should be drawn");
+                Assert.True(Ui.Capture(pill, $"pill-3-done-{look.Tag}", look.Backdrop) > 200, "done: the capsule and tick should be drawn");
                 Ui.Pump(1300);
                 Assert.False(pill.IsVisible, "done: should hide itself after confirming");
 
@@ -51,15 +66,15 @@ public class IndicatorSmokeTests
                 Ui.Pump(700);
                 Assert.True(pill.IsVisible, "notice: should appear from hidden");
                 AssertIsQuietOverlay(pill);
-                Assert.True(Ui.Capture(pill, $"pill-4-notice-warning-{look.Name}", look.Backdrop) > 400, "notice: the words should be drawn");
+                Assert.True(Ui.Capture(pill, $"pill-4-notice-warning-{look.Tag}", look.Backdrop) > 400, "notice: the words should be drawn");
 
                 pill.ShowNotice("Copied. Press Ctrl+V", NoticeKind.Info);
                 Ui.Pump(700);
-                Ui.Capture(pill, $"pill-5-notice-info-{look.Name}", look.Backdrop);
+                Ui.Capture(pill, $"pill-5-notice-info-{look.Tag}", look.Backdrop);
 
                 pill.ShowNotice("Getting ready", NoticeKind.Busy);
                 Ui.Pump(700);
-                Ui.Capture(pill, $"pill-6-notice-busy-{look.Name}", look.Backdrop);
+                Ui.Capture(pill, $"pill-6-notice-busy-{look.Tag}", look.Backdrop);
 
                 pill.HideNow();
                 Assert.False(pill.IsVisible, "HideNow: should hide at once");
@@ -73,6 +88,7 @@ public class IndicatorSmokeTests
             {
                 pill.Dispose();
                 IndicatorTheme.Forced = null;
+                IndicatorTheme.ForcedAnimations = null;
             }
         }
     });
@@ -80,9 +96,10 @@ public class IndicatorSmokeTests
     [Fact]
     public void EdgeGlow_GoesThroughEveryState_AndStaysOutOfTheWay() => Ui.Run(() =>
     {
-        foreach (var look in Looks)
+        foreach (var look in Cases())
         {
             IndicatorTheme.Forced = look.Palette;
+            IndicatorTheme.ForcedAnimations = look.Animated;
             var glow = new EdgeGlowWindow();
             try
             {
@@ -90,16 +107,16 @@ public class IndicatorSmokeTests
                 Ui.Speak(glow.SetLevel, 900);
                 Assert.True(glow.IsVisible, "listening: should be on screen");
                 AssertIsQuietOverlay(glow, expectedWidthFraction: 0.44);
-                Assert.True(Ui.Capture(glow, $"glow-1-listening-{look.Name}", look.Backdrop) > 2000, "listening: the halo should be drawn");
+                Assert.True(Ui.Capture(glow, $"glow-1-listening-{look.Tag}", look.Backdrop) > 2000, "listening: the halo should be drawn");
 
                 glow.ShowWorking();
                 Ui.Pump(800);
                 Assert.True(glow.IsVisible, "working: should stay on screen");
-                Assert.True(Ui.Capture(glow, $"glow-2-working-{look.Name}", look.Backdrop) > 500, "working: the edge should be drawn");
+                Assert.True(Ui.Capture(glow, $"glow-2-working-{look.Tag}", look.Backdrop) > 500, "working: the edge should be drawn");
 
                 glow.ShowDone();
                 Ui.Pump(150);
-                Assert.True(Ui.Capture(glow, $"glow-3-done-{look.Name}", look.Backdrop) > 2000, "done: should brighten before it fades, not vanish");
+                Assert.True(Ui.Capture(glow, $"glow-3-done-{look.Tag}", look.Backdrop) > 2000, "done: should brighten before it fades, not vanish");
                 Ui.Pump(1300);
                 Assert.False(glow.IsVisible, "done: should fade out and hide");
 
@@ -112,15 +129,19 @@ public class IndicatorSmokeTests
             {
                 glow.Dispose();
                 IndicatorTheme.Forced = null;
+                IndicatorTheme.ForcedAnimations = null;
             }
         }
     });
 
     [Theory]
-    [InlineData(IndicatorStyle.Pill)]
-    [InlineData(IndicatorStyle.Glow)]
-    public void Demo_PlaysAWholeDictation_OnEitherStyle(IndicatorStyle style) => Ui.Run(() =>
+    [InlineData(IndicatorStyle.Pill, true)]
+    [InlineData(IndicatorStyle.Pill, false)]
+    [InlineData(IndicatorStyle.Glow, true)]
+    [InlineData(IndicatorStyle.Glow, false)]
+    public void Demo_PlaysAWholeDictation_OnEitherStyle(IndicatorStyle style, bool animated) => Ui.Run(() =>
     {
+        IndicatorTheme.ForcedAnimations = animated;
         IDictationIndicator indicator = IndicatorFactory.Create(style);
         try
         {
@@ -137,6 +158,7 @@ public class IndicatorSmokeTests
         finally
         {
             indicator.Dispose();
+            IndicatorTheme.ForcedAnimations = null;
         }
     });
 

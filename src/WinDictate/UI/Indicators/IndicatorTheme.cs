@@ -67,8 +67,15 @@ internal static class IndicatorTheme
         return AppsUseDarkTheme() ? IndicatorPalette.Dark : IndicatorPalette.Light;
     }
 
+    /// <summary>
+    /// Test hook: forces animations on or off regardless of the Windows setting, so
+    /// both the animated and the still code paths can be exercised on any machine
+    /// (server images usually ship with animations off). Never set in the app itself.
+    /// </summary>
+    internal static bool? ForcedAnimations { get; set; }
+
     /// <summary>False when the user has turned off animations in Windows (Accessibility, Visual effects).</summary>
-    public static bool AnimationsEnabled => SystemParameters.ClientAreaAnimation;
+    public static bool AnimationsEnabled => ForcedAnimations ?? SystemParameters.ClientAreaAnimation;
 
     private static bool AppsUseDarkTheme()
     {
