@@ -9,7 +9,7 @@
 - System-tray app, settings window, JSON config
 - Optional AI cleanup via OpenAI-compatible endpoint
 - Privacy defaults: no audio on disk, no history, no telemetry
-- Unit-tested hotkey state machine (AltGr, secure-desktop self-heal), run in Windows CI
+- Unit tests for the hotkey state machine and watchdog, the dictation queue, insertion fallbacks and transcript clean-up; they run on any OS and in Windows CI
 
 ## v0.2 - usability
 - Configurable overlay position and size
