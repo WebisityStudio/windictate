@@ -106,11 +106,14 @@ public sealed class Transcriber : IDisposable
     public async Task<string> TranscribeAsync(Stream wav, AppSettings settings, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct);
-        // Check inside the gate: EnsureReadyAsync sets _factory=null before
-        // loading a new model, so a mid-swap check outside the gate can race.
-        if (_factory == null) throw new InvalidOperationException("Speech model is not loaded yet");
         try
         {
+            // Check inside the gate: EnsureReadyAsync sets _factory=null before
+            // loading a new model, so a mid-swap check outside the gate can race.
+            // It must also sit inside the try, or this throw would skip the
+            // Release below and leave every later call waiting forever.
+            if (_factory == null) throw new InvalidOperationException("Speech model is not loaded yet");
+
             var builder = _factory.CreateBuilder();
             builder = settings.Language.Equals("auto", StringComparison.OrdinalIgnoreCase)
                 ? builder.WithLanguageDetection()

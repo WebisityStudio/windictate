@@ -20,12 +20,15 @@
     <Compile Include="..\..\src\WinDictate\Core\HotkeyMonitor.cs" Link="Linked\HotkeyMonitor.cs" />
     <Compile Include="..\..\src\WinDictate\Core\Logger.cs" Link="Linked\Logger.cs" />
     <Compile Include="..\..\src\WinDictate\Core\NativeMethods.cs" Link="Linked\NativeMethods.cs" />
+    <Compile Include="..\..\src\WinDictate\Core\Transcriber.cs" Link="Linked\Transcriber.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- Managed API only: the tests never load a model, so no native runtime is needed. -->
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
   </ItemGroup>
 
 </Project>
