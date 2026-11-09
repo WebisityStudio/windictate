@@ -45,7 +45,7 @@ public class IndicatorSmokeTests
             var pill = new GlassPillWindow();
             try
             {
-                pill.ShowListening();
+                pill.ShowListening(IntPtr.Zero);
                 Ui.Speak(pill.SetLevel, 900);
                 Assert.True(pill.IsVisible, "listening: should be on screen");
                 AssertIsQuietOverlay(pill);
@@ -103,7 +103,7 @@ public class IndicatorSmokeTests
             var glow = new EdgeGlowWindow();
             try
             {
-                glow.ShowListening();
+                glow.ShowListening(IntPtr.Zero);
                 Ui.Speak(glow.SetLevel, 900);
                 Assert.True(glow.IsVisible, "listening: should be on screen");
                 AssertIsQuietOverlay(glow, expectedWidthFraction: 0.44);
@@ -120,7 +120,7 @@ public class IndicatorSmokeTests
                 Ui.Pump(1300);
                 Assert.False(glow.IsVisible, "done: should fade out and hide");
 
-                glow.ShowListening();
+                glow.ShowListening(IntPtr.Zero);
                 Ui.Pump(200);
                 glow.HideNow();
                 Assert.False(glow.IsVisible, "HideNow: should hide at once");

@@ -12,16 +12,17 @@ namespace WinDictate.UI.Indicators;
 internal static class OverlayPositioner
 {
     /// <param name="window">A window that has already been shown (it needs a handle).</param>
+    /// <param name="targetWindow">The window being dictated into, or zero for whichever has focus now.</param>
     /// <param name="widthFraction">
     /// When set, the window is resized to this fraction of the work area's width
     /// (never below <paramref name="minimumWidthDip"/>); otherwise its width is left alone.
     /// </param>
     /// <returns>false when the monitor could not be read; the window then stays where it was.</returns>
-    public static bool PlaceBottomCentre(Window window, double? widthFraction = null, double minimumWidthDip = 0)
+    public static bool PlaceBottomCentre(Window window, IntPtr targetWindow = default, double? widthFraction = null, double minimumWidthDip = 0)
     {
         IntPtr hwnd = new WindowInteropHelper(window).Handle;
         if (hwnd == IntPtr.Zero) return false;
-        if (!IndicatorNative.TryGetTargetWorkArea(out PixelRect work, out double scale)) return false;
+        if (!IndicatorNative.TryGetTargetWorkArea(targetWindow, out PixelRect work, out double scale)) return false;
 
         // 1. Hop onto the target monitor first, so WPF adopts that monitor's DPI.
         IndicatorNative.SetWindowPos(hwnd, IntPtr.Zero, work.Left, work.Top, 0, 0,

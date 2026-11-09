@@ -26,10 +26,10 @@ internal sealed class EdgeGlowIndicator : IDictationIndicator
     private readonly EdgeGlowWindow _glow = new();
     private readonly GlassPillWindow _words = new() { Lift = 8 };
 
-    public void ShowListening()
+    public void ShowListening(IntPtr targetWindow)
     {
         _words.HideNow();
-        _glow.ShowListening();
+        _glow.ShowListening(targetWindow);
     }
 
     public void SetLevel(float peak) => _glow.SetLevel(peak);
@@ -94,7 +94,7 @@ public sealed class IndicatorDemo
     public static IndicatorDemo Play(IDictationIndicator indicator)
     {
         var demo = new IndicatorDemo(indicator, Dispatcher.CurrentDispatcher);
-        demo._indicator.ShowListening();
+        demo._indicator.ShowListening(IntPtr.Zero);
         demo._clock.Start();
         demo._timer.Start();
         return demo;

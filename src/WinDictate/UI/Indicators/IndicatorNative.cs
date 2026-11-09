@@ -14,6 +14,7 @@ internal static class IndicatorNative
     private const long WS_EX_TOOLWINDOW = 0x00000080;
     private const long WS_EX_NOACTIVATE = 0x08000000;
 
+    private const uint MONITOR_DEFAULTTONULL = 0;
     private const uint MONITOR_DEFAULTTOPRIMARY = 1;
     private const uint MONITOR_DEFAULTTONEAREST = 2;
     private const int MDT_EFFECTIVE_DPI = 0;
@@ -58,6 +59,10 @@ internal static class IndicatorNative
     private static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
 
     [DllImport("user32.dll")]
@@ -96,17 +101,20 @@ internal static class IndicatorNative
 
     /// <summary>
     /// Work area (screen minus taskbar) and DPI scale of the monitor the user is
-    /// working on: the one holding the foreground window, else the one under the
-    /// mouse pointer, else the primary monitor.
+    /// working on: the one holding <paramref name="preferredWindow"/> if that is
+    /// still a window on some monitor, else the one holding the foreground
+    /// window, else the one under the mouse pointer, else the primary monitor.
     /// </summary>
-    public static bool TryGetTargetWorkArea(out PixelRect work, out double dpiScale)
+    public static bool TryGetTargetWorkArea(IntPtr preferredWindow, out PixelRect work, out double dpiScale)
     {
         work = default;
         dpiScale = 1;
         try
         {
             IntPtr monitor = IntPtr.Zero;
-            IntPtr foreground = GetForegroundWindow();
+            if (preferredWindow != IntPtr.Zero && IsWindow(preferredWindow))
+                monitor = MonitorFromWindow(preferredWindow, MONITOR_DEFAULTTONULL);
+            IntPtr foreground = monitor == IntPtr.Zero ? GetForegroundWindow() : IntPtr.Zero;
             if (foreground != IntPtr.Zero)
                 monitor = MonitorFromWindow(foreground, MONITOR_DEFAULTTONEAREST);
             if (monitor == IntPtr.Zero && GetCursorPos(out POINT cursor))

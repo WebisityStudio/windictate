@@ -47,10 +47,10 @@ public partial class EdgeGlowWindow : Window
         SourceInitialized += (_, _) => IndicatorNative.MakeOverlay(new WindowInteropHelper(this).Handle);
     }
 
-    public void ShowListening()
+    public void ShowListening(IntPtr targetWindow)
     {
         if (_disposed) return;
-        bool fresh = Prepare();
+        bool fresh = Prepare(targetWindow);
         _phase = Phase.Listening;
         _peak = 0;
         _shaper.Reset();
@@ -136,7 +136,7 @@ public partial class EdgeGlowWindow : Window
     }
 
     /// <returns>true when the glow was not on screen.</returns>
-    private bool Prepare()
+    private bool Prepare(IntPtr targetWindow = default)
     {
         _generation++;
         _autoHide.Stop();
@@ -147,7 +147,7 @@ public partial class EdgeGlowWindow : Window
         {
             Motion.Set(Root, OpacityProperty, 0);
             if (!IsVisible) Show();
-            OverlayPositioner.PlaceBottomCentre(this, WidthFraction, MinimumWidth);
+            OverlayPositioner.PlaceBottomCentre(this, targetWindow, WidthFraction, MinimumWidth);
         }
         return fresh;
     }

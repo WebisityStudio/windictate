@@ -72,10 +72,10 @@ public partial class GlassPillWindow : Window, IDictationIndicator
 
     // ----- IDictationIndicator -----
 
-    public void ShowListening()
+    public void ShowListening(IntPtr targetWindow)
     {
         if (_disposed) return;
-        bool fresh = Prepare();
+        bool fresh = Prepare(targetWindow);
         _phase = Phase.Listening;
         _peak = 0;
         _shaper.Reset();
@@ -168,7 +168,7 @@ public partial class GlassPillWindow : Window, IDictationIndicator
 
     /// <summary>Gets ready for a new state.</summary>
     /// <returns>true when the capsule was not on screen and has to make an entrance.</returns>
-    private bool Prepare()
+    private bool Prepare(IntPtr targetWindow = default)
     {
         _generation++;
         _autoHide.Stop();
@@ -180,7 +180,7 @@ public partial class GlassPillWindow : Window, IDictationIndicator
             Motion.Set(Root, OpacityProperty, 0);
             if (!IsVisible) Show();
             // Only placed when it appears, so it never jumps between monitors mid-dictation.
-            OverlayPositioner.PlaceBottomCentre(this);
+            OverlayPositioner.PlaceBottomCentre(this, targetWindow);
         }
         return fresh;
     }

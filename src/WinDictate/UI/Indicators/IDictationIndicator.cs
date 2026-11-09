@@ -32,10 +32,14 @@ public enum NoticeKind
 public interface IDictationIndicator : IDisposable
 {
     /// <summary>
-    /// The microphone is capturing. Appears on the monitor the user is working on.
-    /// Call this only once capture has really started, never on the key press alone.
+    /// The microphone is capturing. Call this only once capture has really
+    /// started, never on the key press alone.
     /// </summary>
-    void ShowListening();
+    /// <param name="targetWindow">
+    /// The window being dictated into, used only to pick the monitor to appear on.
+    /// Pass <see cref="IntPtr.Zero"/> for whichever window has focus now.
+    /// </param>
+    void ShowListening(IntPtr targetWindow);
 
     /// <summary>Latest microphone peak, 0..1. Cheap; expected about 30 times a second.</summary>
     void SetLevel(float peak);
