@@ -78,7 +78,9 @@ public partial class OverlayWindow : Window
         MeterFill.Width = w;
     }
 
-    public void Flash(string text, bool success)
+    /// <param name="holdMs">How long the message stays fully visible before it fades
+    /// (longer for notices the user has to read and act on).</param>
+    public void Flash(string text, bool success, int holdMs = 700)
     {
         Prepare();
         int generation = _generation;
@@ -93,7 +95,7 @@ public partial class OverlayWindow : Window
 
         var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(900))
         {
-            BeginTime = TimeSpan.FromMilliseconds(700)
+            BeginTime = TimeSpan.FromMilliseconds(Math.Max(0, holdMs))
         };
         fade.Completed += (_, _) =>
         {

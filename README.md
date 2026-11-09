@@ -27,6 +27,8 @@ regulated environment. WinDictate keeps the whole speech path on the laptop.
 - **Global hold-to-talk hotkey** (default **Ctrl + Alt**). Hold, speak, release.
 - **Fully local transcription** via [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (through the Whisper.net bindings). Works with no internet once the model is present.
 - **Pastes into the focused app** using the clipboard or, optionally, by simulating keystrokes. By default the transcript **stays on the clipboard** afterwards, so you can paste it again anywhere with Ctrl+V - even if the cursor wasn't in a text box when you released the hotkey. A setting switches this off to restore your previous clipboard instead.
+- **Back-to-back dictation**: start the next dictation while the last one is still being transcribed; results are inserted in the order you spoke them, each followed by a space (a setting turns the space off).
+- **Never drops a dictation silently**: if the text cannot be inserted (for example a key stays held down, or Windows rejects the keystrokes), it is left on the clipboard and the overlay tells you to press Ctrl+V.
 - **A small recording overlay** shows it is listening, a live mic level, and which window it will insert into.
 - **System-tray app** - runs quietly, no main window. Right-click for settings.
 - **Optional AI cleanup** (off by default): fix punctuation, capitalisation and filler words via any OpenAI-compatible endpoint - the public API *or* an internal gateway URL. If it fails or times out, the raw local transcript is used.
@@ -47,6 +49,15 @@ Release Ctrl+Alt
 The keyboard, microphone and insertion all happen locally. Only the optional
 cleanup step can involve a network call, and only if you enable it and provide an
 endpoint.
+
+## Requirements
+
+- **Windows 11** (x64). The speech engine's native runtime (Whisper.net) requires Windows 11 or Windows Server 2022 or newer.
+- **Microsoft Visual C++ Redistributable for Visual Studio 2022 (x64)**, which the speech engine's native library needs. Get it from Microsoft's [latest supported Visual C++ Redistributable downloads](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170#latest-microsoft-visual-c-redistributable-version) page.
+- **A CPU with AVX2** (plus AVX, FMA and F16C). Intel Core and AMD Ryzen processors from the last decade have them; some low-end Celeron, Pentium and Atom chips do not.
+- A microphone, and roughly 0.5-2 GB of disk space for the speech model.
+
+If the tray tooltip says *"Model not ready, check log"* right after start-up even though the model file is present, the Visual C++ Redistributable or the CPU features are the usual cause.
 
 ## Install
 
@@ -86,6 +97,7 @@ languages, set the language to `auto` in settings and use a non-`.en` model.
 - **Cleanup** is opt-in. With it off, WinDictate makes **no network calls at all** (after the one-time model download).
 - **No API keys are required** for the core product. A key is only needed if you point cleanup at an endpoint that requires one.
 - By default the transcript is **kept on the clipboard** after insertion as a safety net (so a dictation is never lost if the focus wasn't a text box). For stricter clipboard hygiene, untick *"Keep transcript on the clipboard afterwards"* in Settings: paste mode then saves your previous clipboard in memory and restores it within a few hundred milliseconds, and its contents are never logged. Only text is restored in that mode: if the clipboard held an image or files, it is cleared after insertion rather than left holding the transcript. Combine it with the "type" insertion mode to avoid the clipboard entirely.
+- Whatever that setting says, a dictation that **could not be inserted** (keys held for several seconds, keystrokes rejected by Windows, or the workstation locked before it was inserted) is left on the clipboard, and the overlay says so, rather than being thrown away.
 
 See [docs/ENTERPRISE.md](docs/ENTERPRISE.md) for a deployment and governance summary
 aimed at IT / security teams.
@@ -99,6 +111,8 @@ dotnet publish src/WinDictate/WinDictate.csproj -c Release -r win-x64 --self-con
 ```
 
 Run `publish/WinDictate/WinDictate.exe`.
+
+`dotnet test` runs the unit tests (hotkey state machine and watchdog, dictation queue, insertion fallbacks, transcript clean-up, speech gate, settings). They target plain .NET 8, so they also run on macOS and Linux. [docs/TESTING.md](docs/TESTING.md) has the manual checks that need a real Windows machine.
 
 ## Status
 

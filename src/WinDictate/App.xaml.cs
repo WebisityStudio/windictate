@@ -16,6 +16,7 @@ public partial class App : Application
     private Mutex? _singleInstance;
     private KeyboardHook? _hook;
     private HotkeyMonitor? _hotkeys;
+    private HotkeyWatchdog? _watchdog;
     private DictationController? _controller;
     private OverlayWindow? _overlay;
     private NotifyIcon? _tray;
@@ -51,25 +52,41 @@ public partial class App : Application
         _overlay.Show();   // realize the handle so we can set ex-styles
         _overlay.HideOverlay();
 
-        _controller = new DictationController(Dispatcher, _overlay, _settings);
+        OnStatus("Starting…"); // before the model warm-up can report "Ready"
+        _controller = new DictationController(_settings, new OverlayPresenter(Dispatcher, _overlay),
+            new WindowsDictationPlatform(), new Transcriber(), new WindowsTextTarget());
         _controller.StatusChanged += OnStatus;
+        _controller.Start();
 
         _hotkeys = new HotkeyMonitor(_settings.Hotkey);
-        _hotkeys.SessionStarted += () => _controller!.OnSessionStarted();
-        _hotkeys.SessionEnded += cancelled => _controller!.OnSessionEnded(cancelled);
-        _controller.MaxDurationReached += () => _hotkeys!.Reset();
+        _hotkeys.SessionStarted += id => _controller!.OnSessionStarted(id);
+        _hotkeys.SessionEnded += (id, reason) =>
+        {
+            _controller!.OnSessionEnded(id, reason);
+            // A release that never arrived may mean Windows dropped the hook.
+            if (reason == SessionEndReason.KeysLost) _hook?.Reinstall();
+        };
+        _controller.MaxDurationReached += id => _hotkeys!.StopSession(id);
 
+        // Ends a session whose key-up never arrives (Ctrl+Alt+Del, UAC prompt,
+        // elevated window) so the microphone cannot stay open; off the hook thread.
+        _watchdog = new HotkeyWatchdog(_hotkeys);
+
+        // The hook runs on its own thread and calls the hotkey state machine
+        // directly from the hook callback (see KeyboardHook and HotkeyMonitor).
         _hook = new KeyboardHook();
         _hook.KeyEvent += (vk, down) => _hotkeys!.OnKeyEvent(vk, down);
 
         // Stop recording if the workstation locks or disconnects — the key-up
         // events land on the secure desktop and are never delivered, so without
         // this the mic would keep capturing the room until MaxRecordSeconds.
+        // Unlock and resume re-install the hook, which Windows may have dropped.
         Microsoft.Win32.SystemEvents.SessionSwitch += OnSessionSwitch;
+        Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
         try
         {
-            _hook.Install();
+            _hook.Start();
         }
         catch (Exception ex)
         {
@@ -80,7 +97,6 @@ public partial class App : Application
         }
 
         SetupTray();
-        OnStatus("Starting…");
         Logger.Info($"Ready. Hotkey = {_hotkeys.ActiveHotkeyText}");
     }
 
@@ -129,6 +145,7 @@ public partial class App : Application
             ContextMenuStrip = menu
         };
         _tray.DoubleClick += (_, _) => OpenSettings(hotkeyInfo);
+        if (_lastStatus != null) OnStatus(_lastStatus); // a status reported before the tray existed
     }
 
     private void OpenSettings(ToolStripMenuItem hotkeyInfo)
@@ -154,17 +171,56 @@ public partial class App : Application
                      or Microsoft.Win32.SessionSwitchReason.RemoteDisconnect
                      or Microsoft.Win32.SessionSwitchReason.ConsoleDisconnect)
         {
-            _hotkeys?.Reset();
-            _controller?.OnSessionEnded(true);
+            // Finished dictations wait, and are then kept on the clipboard rather
+            // than typed into whatever has focus after the unlock.
+            _controller?.SetWorkstationLocked(true);
+            _hotkeys?.Reset(); // cancels any active dictation (audio discarded)
+        }
+        else if (e.Reason is Microsoft.Win32.SessionSwitchReason.SessionUnlock
+                          or Microsoft.Win32.SessionSwitchReason.SessionLogon
+                          or Microsoft.Win32.SessionSwitchReason.RemoteConnect
+                          or Microsoft.Win32.SessionSwitchReason.ConsoleConnect)
+        {
+            _controller?.SetWorkstationLocked(false);
+            RefreshHook($"session {e.Reason}");
         }
     }
 
+    private void OnPowerModeChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == Microsoft.Win32.PowerModes.Suspend)
+        {
+            Logger.Info("Suspending: cancelling any dictation in progress");
+            _controller?.SetSuspended(true);
+            _hotkeys?.Reset(); // cancels any active dictation (audio discarded)
+        }
+        else if (e.Mode == Microsoft.Win32.PowerModes.Resume)
+        {
+            _controller?.SetSuspended(false);
+            RefreshHook("resume");
+        }
+    }
+
+    /// <summary>
+    /// Windows silently drops a low-level hook that once ran too long, and gives
+    /// no notice, so re-register it whenever it may have been lost. Key state
+    /// from before is stale, so forget it as well.
+    /// </summary>
+    private void RefreshHook(string reason)
+    {
+        Logger.Info($"Re-installing keyboard hook after {reason}");
+        _hook?.Reinstall();
+        _hotkeys?.Reset();
+    }
+
     private bool _downloadNotified;
+    private string? _lastStatus; // UI thread only
 
     private void OnStatus(string status)
     {
         Dispatcher.BeginInvoke(() =>
         {
+            _lastStatus = status;
             if (_tray == null) return;
             var text = $"WinDictate - {status}";
             _tray.Text = text.Length > 63 ? text[..63] : text;
@@ -199,7 +255,9 @@ public partial class App : Application
     {
         Logger.Info("Shutting down");
         Microsoft.Win32.SystemEvents.SessionSwitch -= OnSessionSwitch;
+        Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
+        _watchdog?.Dispose();
         _hook?.Dispose();
         _controller?.Dispose();
         _idleIcon?.Dispose();
