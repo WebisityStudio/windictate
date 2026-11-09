@@ -87,6 +87,9 @@ internal sealed class FakePlatform : IDictationPlatform
 
     public volatile bool ModifiersHeld;
 
+    /// <summary>Where keyboard focus is (window, focused control). Tests move it to simulate clicks.</summary>
+    public InsertionTarget Target { get; set; } = new(new IntPtr(42), new IntPtr(7));
+
     public FakeRecorder Expect(string utterance, bool voiced = true)
     {
         var recorder = new FakeRecorder(utterance, voiced);
@@ -96,7 +99,7 @@ internal sealed class FakePlatform : IDictationPlatform
 
     public FakeRecorder[] Created => _created.ToArray();
 
-    public IntPtr ForegroundWindow() => new(42);
+    public InsertionTarget CurrentTarget() => Target;
     public bool ModifierKeysHeld() => ModifiersHeld;
     public int ResolveMicrophone(AppSettings settings) => 0;
 
@@ -117,7 +120,11 @@ internal sealed class FakeSpeech : ISpeechToText
     public readonly ConcurrentQueue<string> Transcribed = new();
     public readonly HashSet<string> Failing = new();
 
-    public bool IsReady => true;
+    public volatile bool Ready = true;   // a model is loaded
+    public volatile bool FailEnsure;     // loading/downloading the requested model fails (offline)
+    public readonly ConcurrentQueue<string> EnsureCalls = new();
+
+    public bool IsReady => Ready;
 
     public TaskCompletionSource Hold(string utterance)
     {
@@ -126,8 +133,13 @@ internal sealed class FakeSpeech : ISpeechToText
         return gate;
     }
 
-    public Task EnsureReadyAsync(string model, IProgress<string>? status, CancellationToken ct = default) =>
-        Task.CompletedTask;
+    public Task EnsureReadyAsync(string model, IProgress<string>? status, CancellationToken ct = default)
+    {
+        EnsureCalls.Enqueue(model);
+        if (FailEnsure) throw new HttpRequestException("no network");
+        Ready = true;
+        return Task.CompletedTask;
+    }
 
     public async Task<string> TranscribeAsync(Stream wav, AppSettings settings, CancellationToken ct = default)
     {
@@ -152,7 +164,16 @@ internal sealed class FakeTextTarget : ITextTarget
 
     public volatile bool ClipboardFails;
     public volatile bool InputBlocked;           // SendInput rejected (elevated window, secure desktop)
+    public volatile bool TypingStopsPartWay;     // Windows accepts only the first keystrokes
     public Func<bool> KeysHeld { get; set; } = () => false;
+
+    /// <summary>Return true to make a particular clipboard write fail.</summary>
+    public Func<string, bool> RejectWrite { get; set; } = _ => false;
+
+    /// <summary>Where keyboard input would go now (the harness points this at the fake platform).</summary>
+    public Func<InsertionTarget> Current { get; set; } = () => new(new IntPtr(42), new IntPtr(7));
+
+    public InsertionTarget CurrentTarget() => Current();
 
     /// <summary>What reached the focused app, in order: "paste:text" or "type:text".</summary>
     public string[] Delivered
@@ -184,7 +205,7 @@ internal sealed class FakeTextTarget : ITextTarget
     {
         lock (_lock)
         {
-            if (ClipboardFails) return Task.FromResult(false);
+            if (ClipboardFails || RejectWrite(text)) return Task.FromResult(false);
             _clipboard = text;
             _sequence++;
             return Task.FromResult(true);
@@ -224,6 +245,11 @@ internal sealed class FakeTextTarget : ITextTarget
         lock (_lock)
         {
             if (InputBlocked) return SendResult.Failed;
+            if (TypingStopsPartWay)
+            {
+                _delivered.Add("type:" + text[..Math.Min(3, text.Length)]);
+                return SendResult.Partial;
+            }
             _delivered.Add("type:" + text);
             return SendResult.Sent;
         }

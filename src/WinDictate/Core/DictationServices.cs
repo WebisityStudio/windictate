@@ -36,8 +36,9 @@ public interface ISpeechToText : IDisposable
 /// <summary>Operating-system queries the controller needs.</summary>
 public interface IDictationPlatform
 {
-    /// <summary>Handle of the window that has focus. Cheap and non-blocking (called on the hook thread).</summary>
-    IntPtr ForegroundWindow();
+    /// <summary>The window and control that have keyboard focus. Cheap and non-blocking
+    /// (called on the hook thread when the hotkey is pressed).</summary>
+    InsertionTarget CurrentTarget();
 
     /// <summary>True while Shift, Ctrl, Alt or Win is physically held.</summary>
     bool ModifierKeysHeld();

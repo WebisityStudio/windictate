@@ -23,7 +23,7 @@ deployment step).
 3. Say a sentence: *"This is my first dictation test."*
 4. **Release Ctrl + Alt.** After a moment the text is typed where your cursor was, followed by a space so the next dictation does not run into it.
 
-You can hold the hotkey again straight away, even while the previous dictation is still being transcribed: results are inserted in the order you spoke them.
+You can hold the hotkey again straight away, even while the previous dictation is still being transcribed: results are inserted in the order you spoke them. Stay in the same place until the text appears: if you switch to another window (or another field, in apps where Windows can tell) before a dictation is ready, it goes to the clipboard instead of being typed there. In a browser or Teams WinDictate cannot tell one field from another, so wait for the text before clicking elsewhere.
 
 The very first time, the app downloads the speech model (~466 MB for the default
 `small.en`). The overlay/tray will show download progress. This happens once.
@@ -71,8 +71,12 @@ internet:
 - **"Model not ready, check log"** right after start-up - usually the Visual C++ Redistributable is missing or the CPU lacks AVX2 (see *Before you start*).
 - **"No microphone"** - grant microphone permission (Windows Settings → Privacy → Microphone) and pick the right device in Settings.
 - **"Microphone not ready"** - you released the hotkey before the microphone had started (common with Bluetooth headsets). Wait for "Listening…" before speaking.
+- **"Microphone not responding"** - the microphone driver did not open the device within 10 seconds. Reconnect the headset or pick another microphone in Settings.
 - **"No speech detected"** - you released too quickly, or the mic picked up no voice at all. Hold a touch longer and speak up.
-- **"Not inserted · … in clipboard — press Ctrl+V"** - the text could not be typed into the focused window (for example Windows rejected the keystrokes, or a key such as Shift stayed held down for several seconds), so it was left on the clipboard. Click where it should go and press Ctrl+V. A dictation finished just before you locked the PC is handled the same way.
+- **"Not inserted · … in clipboard — press Ctrl+V"** - the text could not be typed into the focused window (for example Windows rejected the keystrokes, or a key such as Shift stayed held down for several seconds), so it was left on the clipboard. Click where it should go and press Ctrl+V. A dictation finished just before you locked the PC is handled the same way. Until you copy something else, later dictations are typed rather than pasted so that this text stays on the clipboard.
+- **"Focus moved · … in clipboard — press Ctrl+V"** - you switched window (or field) before the dictation was ready, so it was not typed into the new place. Go back and press Ctrl+V.
+- **"Partly typed · full text in clipboard"** - Windows stopped accepting keystrokes part-way through (for example a UAC prompt appeared). Delete the partial text and press Ctrl+V.
+- **Changed the model but it cannot download** (offline) - dictation keeps working with the model that was already loaded; the tray shows "Model not ready, check log" after saving and the log records the failed download. Save again once you are back online.
 - **"Cancelled · hotkey interrupted"** - Windows took the keyboard while you were holding the hotkey (the Ctrl+Alt+Del screen or a UAC prompt, for example), so the recording was discarded rather than inserted somewhere unexpected.
 - **The chosen microphone is unplugged** - WinDictate records from the Windows default instead and goes back to your microphone when it is connected again; Settings shows it as "(not connected)".
 - **Text goes to the wrong window** - the overlay shows the target window title. Make sure the intended app has focus before holding the hotkey.

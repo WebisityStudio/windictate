@@ -59,6 +59,11 @@ by pre-staging the model file (see below).
   inserted at all is left on the clipboard regardless of that setting (and the user
   is told), so it is not lost.
   Source: `src/WinDictate/Core/TextInserter.cs`, `WindowsTextTarget.cs`, `ClipboardAccess.cs`.
+- Text is only typed or pasted if keyboard focus is still in the window (and, where
+  Windows exposes it, the control) in which the dictation was started; otherwise it
+  is left on the clipboard. This guards against a dictation landing in a different
+  application, such as a chat window. Single-window apps such as browsers cannot be
+  checked field by field.
 - Model files are fetched over HTTPS from the official whisper.cpp distribution.
 - The optional cleanup endpoint, model, and key are operator-configured; nothing is hard-coded.
 

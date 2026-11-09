@@ -18,8 +18,13 @@ public sealed class DictationControllerTests : IDisposable
         OverlayDelayMs = 30,
         SlowMicNoticeMs = 120,
         ModifierWaitLimitMs = 1500,
-        InsertPollMs = 5
+        InsertPollMs = 5,
+        MicOpenTimeoutMs = 1000
     };
+
+    private static readonly InsertionTarget Field1 = new(new IntPtr(42), new IntPtr(7));
+    private static readonly InsertionTarget Field2SameWindow = new(new IntPtr(42), new IntPtr(8));
+    private static readonly InsertionTarget OtherWindow = new(new IntPtr(43), new IntPtr(9));
 
     private readonly FakeOverlay _overlay = new();
     private readonly FakePlatform _platform = new();
@@ -33,6 +38,11 @@ public sealed class DictationControllerTests : IDisposable
     private DictationController Controller =>
         _controller ??= new DictationController(_settings, _overlay, _platform, _speech, _target,
             cleanup: (text, _) => Task.FromResult(text), timings: Fast);
+
+    public DictationControllerTests()
+    {
+        _target.Current = () => _platform.Target; // one simulated keyboard focus for both fakes
+    }
 
     public void Dispose() => _controller?.Dispose();
 
@@ -208,8 +218,9 @@ public sealed class DictationControllerTests : IDisposable
         _target.InputBlocked = false;
         await DictateAsync("B");
         await WaitFor(() => _target.Delivered.Length == 1, "B's insertion");
-        Assert.Equal(new[] { "paste:Text B. " }, _target.Delivered);
-        await WaitFor(() => _target.Clipboard == "Text A. ", "A back on the clipboard");
+        // B is typed, not pasted, so A is never replaced (no clipboard swap to race with).
+        Assert.Equal(new[] { "type:Text B. " }, _target.Delivered);
+        Assert.Equal("Text A. ", _target.Clipboard);
     }
 
     [Fact]
@@ -264,9 +275,10 @@ public sealed class DictationControllerTests : IDisposable
         Assert.Empty(_target.Delivered);
         Assert.Equal("Text A. ", _target.Clipboard);
 
-        await DictateAsync("B"); // dictations made after the unlock are inserted as usual
+        await DictateAsync("B"); // dictations made after the unlock are inserted as usual...
         await WaitFor(() => _target.Delivered.Length == 1, "B's insertion");
-        Assert.Equal(new[] { "paste:Text B. " }, _target.Delivered);
+        Assert.Equal(new[] { "type:Text B. " }, _target.Delivered); // ...typed, so A stays on the clipboard
+        Assert.Equal("Text A. ", _target.Clipboard);
     }
 
     [Fact]
@@ -442,5 +454,143 @@ public sealed class DictationControllerTests : IDisposable
         End(1);                                  // released before the overlay delay
         await WaitFor(() => _target.Delivered.Length == 1, "the dictation to finish");
         Assert.DoesNotContain("listening", _overlay.Calls);
+    }
+
+    // ----- Review follow-ups: target check, model, stalls, partial delivery -----
+
+    [Fact]
+    public async Task FocusMovedToAnotherWindow_TextIsKeptOnClipboard_NotPastedThere()
+    {
+        var a = _speech.Hold("A");
+        await DictateAsync("A");
+        _platform.Target = OtherWindow; // the user clicks into another app while A transcribes
+        a.SetResult();
+        await WaitFor(() => OverlayShowed("notice:Focus moved · 2 words in clipboard — press Ctrl+V"), "the notice");
+        Assert.Empty(_target.Delivered);
+        Assert.Equal("Text A. ", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task FocusMovedToAnotherField_TextIsKeptOnClipboard()
+    {
+        var a = _speech.Hold("A");
+        await DictateAsync("A");
+        _platform.Target = Field2SameWindow; // same window, different control
+        a.SetResult();
+        await WaitFor(() => OverlayShowed("notice:Focus moved · 2 words in clipboard — press Ctrl+V"), "the notice");
+        Assert.Empty(_target.Delivered);
+    }
+
+    [Fact]
+    public async Task BackToBack_InDifferentWindows_EachGoesOnlyWhereItWasDictated()
+    {
+        var a = _speech.Hold("A");
+        await DictateAsync("A");          // dictated into Field1
+        _platform.Target = OtherWindow;   // user moves on and dictates B elsewhere
+        await DictateAsync("B");
+        a.SetResult();
+
+        await WaitFor(() => _target.Delivered.Length == 1, "B's insertion");
+        Assert.Equal(new[] { "type:Text B. " }, _target.Delivered); // typed: A is waiting on the clipboard
+        Assert.Equal("Text A. ", _target.Clipboard);                 // A is not lost and not misplaced
+    }
+
+    [Fact]
+    public async Task ModelThatCannotLoad_DictationKeepsUsingTheLoadedModel()
+    {
+        _speech.FailEnsure = true;        // e.g. offline, new model not downloaded
+        Controller.UpdateSettings(new AppSettings { MinHoldMs = 0, Model = "base.en" });
+        await WaitFor(() => _speech.EnsureCalls.Count == 1, "the background model load");
+
+        await DictateAsync("A");
+        await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
+        Assert.Equal(new[] { "paste:Text A. " }, _target.Delivered);
+        Assert.Single(_speech.EnsureCalls); // the dictation itself did not try (and fail) to download
+    }
+
+    [Fact]
+    public async Task NoModelLoadedYet_TheFirstDictationLoadsIt()
+    {
+        _speech.Ready = false;
+        await DictateAsync("A");
+        await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
+        Assert.Single(_speech.EnsureCalls);
+    }
+
+    [Fact]
+    public async Task MissedResumeEvent_DoesNotStallLaterDictations()
+    {
+        Controller.SetSuspended(true); // the matching resume never arrives
+        await DictateAsync("A");
+        await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
+        Assert.Equal(new[] { "paste:Text A. " }, _target.Delivered);
+    }
+
+    [Fact]
+    public async Task UnlockAfterAMissedResume_ReleasesTheWaitingDictation()
+    {
+        var a = _speech.Hold("A");
+        await DictateAsync("A");
+        Controller.SetSuspended(true);
+        Controller.SetWorkstationLocked(true);
+        a.SetResult();
+        await WaitFor(() => _speech.Transcribed.Contains("A"), "transcription of A");
+        Controller.SetWorkstationLocked(false); // no resume event, just the unlock
+
+        await WaitFor(() => OverlayShowed("notice:Not inserted · 2 words in clipboard — press Ctrl+V"), "the notice");
+        Assert.Equal("Text A. ", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task HungMicrophone_DoesNotHoldUpLaterDictations()
+    {
+        var hung = _platform.Expect("A");
+        hung.OpenGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Controller.OnSessionStarted(++_lastId);
+        End(_lastId);
+        await WaitFor(() => OverlayShowed("flash:Microphone not responding"), "the feedback");
+
+        await DictateAsync("B");
+        await WaitFor(() => _target.Delivered.Length == 1, "B's insertion");
+        Assert.Equal(new[] { "paste:Text B. " }, _target.Delivered);
+
+        hung.OpenGate.SetResult(); // the driver finally returns: the device is closed
+        await WaitFor(() => hung.Stopped && hung.Disposed, "the late microphone to close");
+    }
+
+    [Fact]
+    public async Task TypingStoppedPartWay_SaysSo_AndKeepsTheFullText()
+    {
+        _settings.InsertMode = "type";
+        _target.TypingStopsPartWay = true;
+        await DictateAsync("A");
+        await WaitFor(() => OverlayShowed("notice:Partly typed · full text in clipboard — check, then Ctrl+V"), "the notice");
+        Assert.Equal("Text A. ", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task ClipboardRestoreFailure_IsReported()
+    {
+        _settings.KeepInClipboard = false;
+        _target.UserCopies("my own text");
+        _target.RejectWrite = text => text == "my own text";
+        await DictateAsync("A");
+        await WaitFor(() => OverlayShowed("flash:Inserted 2 words · clipboard not restored"), "the result");
+    }
+
+    [Fact]
+    public async Task KeyPressedJustBeforeSending_UsersClipboardSurvivesAFailedRestore()
+    {
+        _settings.KeepInClipboard = false;
+        _target.UserCopies("my own text");
+        int sends = 0;
+        _target.KeysHeld = () => Interlocked.Increment(ref sends) == 1; // first paste attempt refused
+        int restores = 0;
+        _target.RejectWrite = text => text == "my own text" && Interlocked.Increment(ref restores) == 1;
+
+        await DictateAsync("A");
+        await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
+        // The retry must not mistake the transcript for the user's own clipboard text.
+        await WaitFor(() => _target.Clipboard == "my own text", "the user's clipboard back");
     }
 }

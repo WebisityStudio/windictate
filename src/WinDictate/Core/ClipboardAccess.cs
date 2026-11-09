@@ -43,7 +43,13 @@ internal static class ClipboardAccess
         var done = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
-            try { done.TrySetResult(operation()); }
+            try
+            {
+                var result = operation();
+                // Too late: the caller has already treated this call as failed.
+                if (!done.TrySetResult(result))
+                    Logger.Warn($"{what} completed only after it had timed out");
+            }
             catch (Exception ex) when (ex is ExternalException or ThreadStateException or InvalidOperationException)
             {
                 Logger.Warn($"{what} failed: {ex.GetType().Name} 0x{ex.HResult:X8}");
