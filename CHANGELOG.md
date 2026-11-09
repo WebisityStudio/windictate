@@ -2,9 +2,9 @@
 
 ## Unreleased
 
-Reliability fixes and a quieter look ahead of the pilot on Windows 11 laptops.
-The default hotkey (Ctrl+Alt), the keep-transcript-on-clipboard default and the
-target framework (.NET 8) are unchanged. Privacy guarantees still hold: audio
+Reliability fixes, a quieter look and a supported runtime ahead of the pilot on
+Windows 11 laptops. The default hotkey (Ctrl+Alt) and the
+keep-transcript-on-clipboard default are unchanged. Privacy guarantees still hold: audio
 stays in memory, no transcript or clipboard content is logged, no telemetry,
 no new network calls.
 
@@ -90,7 +90,10 @@ no new network calls.
 
 ### Changed
 
-- The unit tests target plain .NET 8 and run on any OS as well as in Windows CI.
+- **Built on .NET 10** (long-term support, until November 2028). .NET 8, which
+  earlier versions bundled, went out of support on 10 November 2026. The app is
+  still self-contained: nothing extra to install on the PC.
+- The unit tests target plain .NET 10 and run on any OS as well as in Windows CI.
 - A dictation finished just before the PC is locked or goes to sleep is no
   longer typed into whatever has focus afterwards. It is left on the clipboard
   with a notice.

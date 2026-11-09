@@ -104,7 +104,7 @@ aimed at IT / security teams.
 
 ## Build from source
 
-Requires the .NET 8 SDK.
+Requires the .NET 10 SDK.
 
 ```powershell
 dotnet publish src/WinDictate/WinDictate.csproj -c Release -r win-x64 --self-contained true -o publish/WinDictate
@@ -112,7 +112,7 @@ dotnet publish src/WinDictate/WinDictate.csproj -c Release -r win-x64 --self-con
 
 Run `publish/WinDictate/WinDictate.exe`.
 
-`dotnet test` runs the unit tests (hotkey state machine and watchdog, dictation queue, insertion fallbacks, transcript clean-up, speech gate, settings). They target plain .NET 8, so they also run on macOS and Linux. [docs/TESTING.md](docs/TESTING.md) has the manual checks that need a real Windows machine.
+`dotnet test` runs the unit tests (hotkey state machine and watchdog, dictation queue, insertion fallbacks, transcript clean-up, speech gate, settings). They target plain .NET 10, so they also run on macOS and Linux. [docs/TESTING.md](docs/TESTING.md) has the manual checks that need a real Windows machine.
 
 ## Status
 

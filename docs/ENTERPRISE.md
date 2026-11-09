@@ -38,7 +38,9 @@ by pre-staging the model file (see below).
 
 ## Deployment
 
-- Self-contained build - no .NET runtime install needed on endpoints.
+- Self-contained build on .NET 10 (long-term support, until November 2028) - no
+  .NET runtime install needed on endpoints. Because the runtime is bundled, a
+  .NET security update reaches endpoints through a new WinDictate build.
 - Ships as a folder (zip). Can be wrapped in MSI/Intune for managed rollout.
 - Settings live in `%APPDATA%\WinDictate\settings.json` (per-user). A managed default
   can be pushed by deploying a pre-populated `settings.json`.
