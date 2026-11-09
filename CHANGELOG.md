@@ -37,13 +37,20 @@ no new network calls.
   transcript on the clipboard" setting says. A notice then says "Copied. Press
   Ctrl+V". Further undelivered dictations are
   added to it, and later dictations are typed rather than pasted so they don't
-  overwrite it, until you copy something else. Text that Windows stopped
-  accepting part-way through is reported as "Partly typed". A failed restore of
-  your own clipboard text is reported too.
+  overwrite it. That lasts for half a minute after the notice (and for anything
+  you had already dictated before it), or until you copy something else; then
+  pasting works as usual again, rather than staying switched to typing. Text
+  that Windows stopped accepting part-way through is reported as "Partly
+  typed". A paste keystroke that Windows only half accepted is reported as
+  "Check it arrived. If not, Ctrl+V" instead of "not inserted", so the text is
+  not pasted twice, and no key is left held down. A failed restore of your own
+  clipboard text is reported too, and with "Keep transcript on the clipboard"
+  off, something you copy while a paste is waiting for a key to be released is
+  no longer replaced by your older clipboard text.
 - **The queue cannot stall.** A microphone that never opens is given up after
-  10 seconds ("Microphone not responding"). A missed resume-from-sleep event no
-  longer holds dictations back, because unlocking or starting a new dictation
-  clears it.
+  10 seconds ("Microphone not responding"). A missed resume-from-sleep or
+  unlock event no longer holds dictations back, because starting a new
+  dictation clears it (and so does unlocking).
 - **Choosing a model that cannot be downloaded no longer breaks dictation.**
   The new model is loaded in the background; until it is available (for
   example offline), dictation keeps using the model already loaded instead of

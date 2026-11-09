@@ -24,6 +24,10 @@ public sealed record DictationTimings
     /// hotkey was released, so one hung device cannot hold up later dictations.</summary>
     public int MicOpenTimeoutMs { get; init; } = 10_000;
 
+    /// <summary>After the user is told that a dictation is waiting on the clipboard,
+    /// later dictations leave the clipboard alone for this long (see <see cref="TextInserter"/>).</summary>
+    public int RecoveryProtectMs { get; init; } = TextInserter.DefaultProtectMs;
+
     /// <summary>How long ordinary results stay up, and notices the user must read.</summary>
     public int FlashHoldMs { get; init; } = 700;
     public int NoticeHoldMs { get; init; } = 2500;
@@ -75,6 +79,7 @@ public sealed class DictationController : IDisposable
     private int _inFlight;            // ended sessions not yet fully processed
     private string? _pipelineStatus;  // latest status of the queue while it is busy
     private string? _deferredNotice;  // notice that arrived during a recording
+    private bool _deferredNoticeIsRecovery; // ...and it is about text waiting on the clipboard
     private long _noticeUntil;        // a notice owns the overlay until this tick count
     private int _contextEpoch;        // bumped when the workstation locks or the system suspends
     private bool _locked;
@@ -103,9 +108,9 @@ public sealed class DictationController : IDisposable
         _overlay = overlay;
         _platform = platform;
         _speech = speech;
-        _inserter = new TextInserter(textTarget);
-        _cleanup = cleanup ?? CleanupService.CleanAsync;
         _timings = timings ?? new DictationTimings();
+        _inserter = new TextInserter(textTarget, protectMs: _timings.RecoveryProtectMs);
+        _cleanup = cleanup ?? CleanupService.CleanAsync;
         _transcribeLoop = Task.Run(() => TranscribeLoopAsync(_shutdown.Token));
         _insertLoop = Task.Run(() => InsertLoopAsync(_shutdown.Token));
     }
@@ -181,9 +186,11 @@ public sealed class DictationController : IDisposable
         {
             stale = _recording; // the monitor always ends a session before the next starts
             _recording = session;
-            // Someone is dictating, so the system is awake even if a resume event was
+            // Someone is dictating, so the system is awake and unlocked (the hotkey
+            // cannot be seen on the lock screen) even if a resume or unlock event was
             // missed; otherwise every finished dictation would wait forever.
             _suspended = false;
+            _locked = false;
         }
         if (stale != null) Abandon(stale);
 
@@ -299,8 +306,9 @@ public sealed class DictationController : IDisposable
             _recorded.Writer.TryWrite(Task.Run(() => FinishRecordingAsync(session)));
             if (_deferredNotice != null)
             {
-                ShowNoticeLocked(_deferredNotice);
+                ShowNoticeLocked(_deferredNotice, _deferredNoticeIsRecovery);
                 _deferredNotice = null;
+                _deferredNoticeIsRecovery = false;
             }
         }
         session.DisposeTimers();
@@ -383,7 +391,7 @@ public sealed class DictationController : IDisposable
         }
 
         PipelineStatus("Transcribing…");
-        return new Job(rec, settings, session.Epoch, session.Target);
+        return new Job(rec, settings, session.Epoch, session.Target, session.StartedAt);
     }
 
     // ----- Stage one: transcription and cleanup, one at a time, in order -----
@@ -491,7 +499,7 @@ public sealed class DictationController : IDisposable
             if (readiness == Readiness.Ready)
             {
                 PipelineStatus("Inserting…");
-                var result = await _inserter.InsertAsync(job.Text, InsertOptions.From(job.Settings), job.Target).ConfigureAwait(false);
+                var result = await _inserter.InsertAsync(job.Text, InsertOptions.From(job.Settings), job.Target, job.StartedAt).ConfigureAwait(false);
                 if (result.Outcome != InsertOutcome.KeysHeld)
                 {
                     Report(job, result);
@@ -540,7 +548,7 @@ public sealed class DictationController : IDisposable
     private async Task KeepForRecoveryAsync(Job job)
     {
         InsertResult result;
-        try { result = await _inserter.KeepForRecoveryAsync(job.Text).ConfigureAwait(false); }
+        try { result = await _inserter.KeepForRecoveryAsync(job.Text, startedAt: job.StartedAt).ConfigureAwait(false); }
         catch (Exception ex)
         {
             Logger.Error("Could not leave the dictation on the clipboard", ex);
@@ -570,13 +578,16 @@ public sealed class DictationController : IDisposable
                 break;
             case InsertOutcome.CopiedOnly:
                 Logger.Warn($"Could not insert {words} words ({result.Reason}); left them on the clipboard");
-                string held = result.RecoveryCount > 1 ? $"{result.RecoveryCount} dictations" : counted;
+                bool several = result.RecoveryCount > 1; // the clipboard also holds earlier undelivered text
+                string held = several ? $"{result.RecoveryCount} dictations" : counted;
+                string whole = several ? held : "full text";
                 PipelineNotice(result.Reason switch
                 {
                     RecoveryReason.TargetChanged => $"Focus moved · {held} in clipboard — press Ctrl+V",
-                    RecoveryReason.PartlyTyped => $"Partly typed · full text in clipboard — check, then Ctrl+V",
+                    RecoveryReason.PartlyTyped => $"Partly typed · {whole} in clipboard — check, then Ctrl+V",
+                    RecoveryReason.MaybePasted => $"May have been inserted · {held} in clipboard — check, then Ctrl+V",
                     _ => $"Not inserted · {held} in clipboard — press Ctrl+V"
-                });
+                }, recovery: true);
                 break;
             default:
                 Logger.Error("Could not insert or copy a dictation");
@@ -645,23 +656,33 @@ public sealed class DictationController : IDisposable
         }
     }
 
-    private void PipelineNotice(string text)
+    /// <param name="recovery">The notice says a dictation is waiting on the clipboard.</param>
+    private void PipelineNotice(string text, bool recovery = false)
     {
         lock (_lock)
         {
             if (_recording != null)
             {
-                _deferredNotice = text;
+                // Only one notice is kept for when the recording ends. Text waiting on
+                // the clipboard is the one the user must act on, so another problem
+                // does not replace it.
+                if (recovery || !_deferredNoticeIsRecovery)
+                {
+                    _deferredNotice = text;
+                    _deferredNoticeIsRecovery = recovery;
+                }
                 return;
             }
-            ShowNoticeLocked(text);
+            ShowNoticeLocked(text, recovery);
         }
     }
 
-    private void ShowNoticeLocked(string text)
+    private void ShowNoticeLocked(string text, bool recovery)
     {
         _overlay.Flash(text, false, _timings.NoticeHoldMs);
         _noticeUntil = Environment.TickCount64 + _timings.NoticeHoldMs + OverlayFadeMs;
+        // The user's time to paste the waiting text starts when they are told.
+        if (recovery) _inserter.RecoveryAnnounced();
     }
 
     /// <summary>Feedback about a session that just ended; dropped if a newer recording already owns the overlay.</summary>
@@ -743,6 +764,7 @@ public sealed class DictationController : IDisposable
         public long HotkeyId { get; }
         public AppSettings Settings { get; }
         public InsertionTarget Target { get; } // where the user was typing when the hotkey went down
+        public long StartedAt { get; } = Environment.TickCount64; // the text inserter's clock
         public Stopwatch Held { get; } = Stopwatch.StartNew();
         public Task<IAudioCapture?> MicTask { get; set; } = Task.FromResult<IAudioCapture?>(null);
         public System.Threading.Timer? MaxTimer { get; set; }
@@ -771,18 +793,20 @@ public sealed class DictationController : IDisposable
 
     private sealed class Job
     {
-        public Job(RecordingResult recording, AppSettings settings, int epoch, InsertionTarget target)
+        public Job(RecordingResult recording, AppSettings settings, int epoch, InsertionTarget target, long startedAt)
         {
             Recording = recording;
             Settings = settings;
             Epoch = epoch;
             Target = target;
+            StartedAt = startedAt;
         }
 
         public RecordingResult Recording { get; }
         public AppSettings Settings { get; }
         public int Epoch { get; }
         public InsertionTarget Target { get; }
+        public long StartedAt { get; } // when the hotkey went down (Environment.TickCount64)
         public string Text { get; set; } = "";
     }
 

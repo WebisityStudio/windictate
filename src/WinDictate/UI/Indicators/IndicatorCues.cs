@@ -77,6 +77,7 @@ internal static class IndicatorCues
         if (Begins(text, "Not inserted")) return Notice("Copied. Press Ctrl+V", NoticeKind.Info);
         if (Begins(text, "Focus moved")) return Notice("Focus moved. Press Ctrl+V", NoticeKind.Info);
         if (Begins(text, "Partly typed")) return Notice("Partly typed. Check, then Ctrl+V", NoticeKind.Warning);
+        if (Begins(text, "May have been inserted")) return Notice("Check it arrived. If not, Ctrl+V", NoticeKind.Warning);
         if (Begins(text, "Couldn't insert")) return Notice("Couldn't insert. Dictate again", NoticeKind.Warning);
         if (Begins(text, "Error")) return Notice("Something went wrong", NoticeKind.Warning);
         return null;

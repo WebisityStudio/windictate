@@ -39,4 +39,6 @@
 - Endpoint-security tools may block the low-level keyboard hook
 - No GPU acceleration in the default CPU runtime
 - Latency scales with model size and CPU; `small.en` is the balance point
-- Insertion targets whatever has focus - no per-field validation
+- Inside browsers and other single-window apps (Edge, Chrome, Teams, new Outlook), a move to another field cannot be detected, so the text goes to wherever the cursor is
+- Dictations still being transcribed when you quit WinDictate are discarded
+- For half a minute after a "press Ctrl+V" notice, later dictations are typed rather than pasted and are not copied to the clipboard

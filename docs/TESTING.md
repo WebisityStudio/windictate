@@ -100,8 +100,13 @@ The log never contains dictated text.
       end with "Copied. Press Ctrl+V" (hold Shift for more than 5 seconds after
       releasing). Then make a normal dictation, which should be typed in, and
       press Ctrl+V. Expected: Ctrl+V pastes the earlier, undelivered dictation.
-      This checks that Windows' clipboard change counter behaves as assumed,
-      which could not be tested here.
+      This is tested automatically on a plain Windows machine; a laptop with
+      clipboard history (Win+V) or a clipboard manager may behave differently,
+      so note what you see.
+- [ ] **...but not for ever.** Repeat the previous test, wait a full minute
+      after the notice, then dictate normally and press Ctrl+V. Expected: the
+      new dictation is pasted as usual, and Ctrl+V pastes the new one again
+      (the old one has been replaced).
 - [ ] **Lock right after dictating.** Dictate a long sentence, release, and
       press Win+L at once. Unlock. Expected: the text is not typed in after the
       unlock. "Copied. Press Ctrl+V" appears after you

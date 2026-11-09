@@ -24,9 +24,14 @@ internal sealed class WindowsTextTarget : ITextTarget
     public SendResult SendPaste()
     {
         if (NativeMethods.AnyModifierHeld()) return SendResult.KeysHeld;
-        if (NativeMethods.SendCtrlV()) return SendResult.Sent;
-        Logger.Warn($"Windows rejected the Ctrl+V keystrokes (error {Marshal.GetLastWin32Error()}); an elevated window or secure desktop may have focus");
-        return SendResult.Failed;
+        var delivery = NativeMethods.SendCtrlV();
+        if (delivery == NativeMethods.InputDelivery.All) return SendResult.Sent;
+        int error = Marshal.GetLastWin32Error();
+        bool partial = delivery == NativeMethods.InputDelivery.Partial;
+        Logger.Warn($"Windows rejected {(partial ? "part of the" : "the")} Ctrl+V keystrokes (error {error}); " +
+                    "an elevated window or secure desktop may have focus");
+        // Partial: the V key went down, so the paste may have happened all the same.
+        return partial ? SendResult.Partial : SendResult.Failed;
     }
 
     public SendResult TypeText(string text)

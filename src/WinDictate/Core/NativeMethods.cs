@@ -246,9 +246,11 @@ internal static class NativeMethods
     /// <summary>How much of a SendInput call Windows accepted.</summary>
     public enum InputDelivery { All, None, Partial }
 
-    /// <summary>Sends Ctrl+V. False if Windows did not accept every event (for example a
-    /// secure desktop being active; UIPI blocking may not be reported).</summary>
-    public static bool SendCtrlV()
+    /// <summary>Sends Ctrl+V and says how much of it Windows accepted (it may accept
+    /// none while, for example, a secure desktop is active; UIPI blocking may not be
+    /// reported). Partial means V went down, so the paste has probably happened.
+    /// No key is left logically held down.</summary>
+    public static InputDelivery SendCtrlV()
     {
         var inputs = new[]
         {
@@ -257,16 +259,33 @@ internal static class NativeMethods
             KeyInput(VK_V, true),
             KeyInput(VK_CONTROL, true)
         };
-        uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
-        if (sent == inputs.Length) return true;
-        if (sent > 0)
+        int size = Marshal.SizeOf<INPUT>();
+        uint sent = SendInput((uint)inputs.Length, inputs, size);
+        var (result, keysToRelease) = AfterCtrlV(sent);
+        if (keysToRelease.Length > 0)
         {
-            // Never leave Ctrl logically held down after a half-accepted batch.
-            var release = new[] { KeyInput(VK_CONTROL, true) };
-            SendInput(1, release, Marshal.SizeOf<INPUT>());
+            int error = Marshal.GetLastPInvokeError(); // keep the reason for the caller's log
+            var release = Array.ConvertAll(keysToRelease, vk => KeyInput(vk, true));
+            SendInput((uint)release.Length, release, size);
+            Marshal.SetLastPInvokeError(error);
         }
-        return false;
+        return result;
     }
+
+    /// <summary>
+    /// What it means when Windows accepted only the first <paramref name="accepted"/>
+    /// of Ctrl+V's four key events (Ctrl down, V down, V up, Ctrl up): whether the
+    /// paste may have happened (it does once V has gone down), and which keys must
+    /// still be released so that none stays logically held.
+    /// </summary>
+    internal static (InputDelivery Result, ushort[] KeysToRelease) AfterCtrlV(uint accepted) => accepted switch
+    {
+        0 => (InputDelivery.None, Array.Empty<ushort>()),
+        1 => (InputDelivery.None, new[] { VK_CONTROL }),           // only Ctrl went down
+        2 => (InputDelivery.Partial, new[] { VK_V, VK_CONTROL }),  // V is down as well
+        3 => (InputDelivery.Partial, new[] { VK_CONTROL }),        // V went down and came up
+        _ => (InputDelivery.All, Array.Empty<ushort>())
+    };
 
     /// <summary>Types text as Unicode key events and says how much of it Windows accepted.
     /// Stops at the first rejected batch rather than typing a garbled remainder.</summary>

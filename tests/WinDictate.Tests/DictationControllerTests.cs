@@ -34,10 +34,12 @@ public sealed class DictationControllerTests : IDisposable
     private DictationController? _controller;
     private long _lastId;
 
-    // Created on first use, so a test can adjust _settings first.
+    private DictationTimings _timings = Fast;
+
+    // Created on first use, so a test can adjust _settings and _timings first.
     private DictationController Controller =>
         _controller ??= new DictationController(_settings, _overlay, _platform, _speech, _target,
-            cleanup: (text, _) => Task.FromResult(text), timings: Fast);
+            cleanup: (text, _) => Task.FromResult(text), timings: _timings);
 
     public DictationControllerTests()
     {
@@ -235,6 +237,85 @@ public sealed class DictationControllerTests : IDisposable
         await DictateAsync("B");
         await WaitFor(() => _target.Delivered.Length == 1, "B's insertion");
         Assert.Equal("Text B. ", _target.Clipboard); // normal keep-on-clipboard behaviour again
+    }
+
+    [Fact]
+    public async Task UndeliveredDictation_StopsBeingProtected_OnceTheUserHasHadTimeToPasteIt()
+    {
+        _timings = Fast with { RecoveryProtectMs = 200 };
+        _target.InputBlocked = true;
+        await DictateAsync("A");
+        await WaitFor(() => OverlayShowed("notice:Not inserted · 2 words in clipboard — press Ctrl+V"), "the notice");
+
+        _target.InputBlocked = false;
+        await Task.Delay(400); // longer than the protection
+        await DictateAsync("B");
+        await WaitFor(() => _target.Delivered.Length == 1, "B's insertion");
+        // Pasted as usual again, with its own copy on the clipboard.
+        Assert.Equal(new[] { "paste:Text B. " }, _target.Delivered);
+        Assert.Equal("Text B. ", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task DictationSpokenBeforeTheFailure_NeverReplacesTheUndeliveredOne_HoweverLongItWaited()
+    {
+        _timings = Fast with { RecoveryProtectMs = 100 };
+        var a = _speech.Hold("A");
+        var b = _speech.Hold("B");
+        _target.InputBlocked = true;
+        await DictateAsync("A");
+        await DictateAsync("B"); // spoken before anyone knew A would fail
+        a.SetResult();
+        await WaitFor(() => OverlayShowed("notice:Not inserted · 2 words in clipboard — press Ctrl+V"), "the notice");
+
+        _target.InputBlocked = false;
+        await Task.Delay(300); // the protection time has long passed while B waited
+        b.SetResult();
+        await WaitFor(() => _target.Delivered.Length == 1, "B's insertion");
+        Assert.Equal(new[] { "type:Text B. " }, _target.Delivered);
+        Assert.Equal("Text A. ", _target.Clipboard); // the user was told to press Ctrl+V for A: it is still there
+    }
+
+    [Fact]
+    public async Task PartlyTyped_WhileEarlierTextWaits_SaysTheClipboardHoldsBoth()
+    {
+        _target.InputBlocked = true;
+        await DictateAsync("A");
+        await WaitFor(() => _target.Clipboard == "Text A. ", "A on the clipboard");
+
+        _target.InputBlocked = false;
+        _target.TypingStopsPartWay = true;
+        await DictateAsync("B"); // typed, because A is waiting on the clipboard
+        await WaitFor(() => OverlayShowed("notice:Partly typed · 2 dictations in clipboard — check, then Ctrl+V"), "the notice");
+        Assert.Equal("Text A. Text B. ", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task HalfSentPaste_SaysToCheck_RatherThanNotInserted()
+    {
+        _target.PasteStopsPartWay = true; // Windows took Ctrl and V down, then refused the rest
+        await DictateAsync("A");
+        await WaitFor(() => OverlayShowed("notice:May have been inserted · 2 words in clipboard — check, then Ctrl+V"), "the notice");
+        Assert.Equal("Text A. ", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task ClipboardNotice_IsNotReplaced_ByALaterProblem_WhileRecording()
+    {
+        var a = _speech.Hold("A");
+        lock (_speech.Failing) _speech.Failing.Add("B");
+        await DictateAsync("A");
+        await DictateAsync("B");
+        long c = await BeginAsync("C"); // still talking while A and B are dealt with
+        Controller.SetWorkstationLocked(true);
+        Controller.SetWorkstationLocked(false);
+        a.SetResult();
+        await WaitFor(() => _target.Clipboard == "Text A. ", "A on the clipboard"); // locked since: not typed
+        await Settle(250); // B's transcription fails straight after A's: both notices wait for C to end
+
+        End(c, SessionEndReason.Cancelled);
+        await WaitFor(() => OverlayShowed("notice:Not inserted · 2 words in clipboard — press Ctrl+V"), "the notice");
+        Assert.DoesNotContain("notice:Error, see log", _overlay.Calls);
     }
 
     [Fact]
@@ -522,6 +603,15 @@ public sealed class DictationControllerTests : IDisposable
     {
         Controller.SetSuspended(true); // the matching resume never arrives
         await DictateAsync("A");
+        await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
+        Assert.Equal(new[] { "paste:Text A. " }, _target.Delivered);
+    }
+
+    [Fact]
+    public async Task MissedUnlockEvent_DoesNotStallLaterDictations()
+    {
+        Controller.SetWorkstationLocked(true); // the matching unlock never arrives
+        await DictateAsync("A");               // ...but the user is plainly back at the keyboard
         await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
         Assert.Equal(new[] { "paste:Text A. " }, _target.Delivered);
     }

@@ -165,6 +165,7 @@ internal sealed class FakeTextTarget : ITextTarget
     public volatile bool ClipboardFails;
     public volatile bool InputBlocked;           // SendInput rejected (elevated window, secure desktop)
     public volatile bool TypingStopsPartWay;     // Windows accepts only the first keystrokes
+    public volatile bool PasteStopsPartWay;      // Windows accepts only part of Ctrl+V (the V key did go down)
     public Func<bool> KeysHeld { get; set; } = () => false;
 
     /// <summary>Return true to make a particular clipboard write fail.</summary>
@@ -235,7 +236,7 @@ internal sealed class FakeTextTarget : ITextTarget
         {
             if (InputBlocked) return SendResult.Failed;
             _delivered.Add("paste:" + _clipboard);
-            return SendResult.Sent;
+            return PasteStopsPartWay ? SendResult.Partial : SendResult.Sent;
         }
     }
 
