@@ -21,7 +21,15 @@ public sealed class AppSettings
     public CleanupSettings Cleanup { get; set; } = new();
 
     public static string DataDir =>
+        DataDirOverride ??
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WinDictate");
+
+    /// <summary>
+    /// Redirects <see cref="DataDir"/> (settings, log, models). Set only by the unit
+    /// tests, so a test run never writes to the user's profile. Not configurable
+    /// from outside the assembly.
+    /// </summary>
+    internal static string? DataDirOverride { get; set; }
 
     public static string SettingsPath => Path.Combine(DataDir, "settings.json");
 

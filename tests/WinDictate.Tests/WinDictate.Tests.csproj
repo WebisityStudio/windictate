@@ -1,23 +1,31 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!--
+    The app itself targets net8.0-windows (WPF) and only runs on Windows. Its
+    platform-neutral logic is compiled straight into this plain net8.0 test
+    assembly instead, so the suite runs with `dotnet test` on Windows CI and on
+    macOS or Linux. Native calls (user32, winmm, whisper.cpp) are declared in
+    the linked files but never invoked by the tests.
+  -->
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
-    <UseWPF>true</UseWPF>
-    <UseWindowsForms>true</UseWindowsForms>
-    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>WinDictate.Tests</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\WinDictate\Core\AppSettings.cs" Link="Linked\AppSettings.cs" />
+    <Compile Include="..\..\src\WinDictate\Core\HotkeyMonitor.cs" Link="Linked\HotkeyMonitor.cs" />
+    <Compile Include="..\..\src\WinDictate\Core\Logger.cs" Link="Linked\Logger.cs" />
+    <Compile Include="..\..\src\WinDictate\Core\NativeMethods.cs" Link="Linked\NativeMethods.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\WinDictate\WinDictate.csproj" />
   </ItemGroup>
 
 </Project>
