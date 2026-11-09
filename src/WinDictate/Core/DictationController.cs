@@ -217,7 +217,12 @@ public sealed class DictationController : IDisposable
                 text = await CleanupService.CleanAsync(text, _settings.Cleanup);
             }
 
-            text = text.Trim();
+            text = TranscriptText.ForInsertion(text, _settings.AddTrailingSpace);
+            if (text.Length == 0)
+            {
+                await ShowFlash("No speech detected", false);
+                return;
+            }
             await ShowStatus("Inserting…");
             var outcome = await TextInserter.InsertAsync(text, _settings, _dispatcher);
             if (outcome == InsertOutcome.Failed)

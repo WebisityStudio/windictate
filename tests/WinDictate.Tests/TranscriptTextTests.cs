@@ -46,4 +46,24 @@ public class TranscriptTextTests
         Assert.Equal("", TranscriptText.StripAnnotations(""));
         Assert.Equal("", TranscriptText.StripAnnotations("   "));
     }
+
+    [Fact]
+    public void ConsecutiveDictations_DoNotRunTogether()
+    {
+        // Two dictations inserted one after the other at the same caret.
+        string inserted = TranscriptText.ForInsertion("Hello there.", addTrailingSpace: true)
+                        + TranscriptText.ForInsertion(" How are you? ", addTrailingSpace: true);
+        Assert.Equal("Hello there. How are you? ", inserted);
+    }
+
+    [Fact]
+    public void TrailingSpace_CanBeTurnedOff() =>
+        Assert.Equal("Hello there.", TranscriptText.ForInsertion("  Hello there. \n", addTrailingSpace: false));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void NothingToInsert_StaysEmpty_EvenWithTrailingSpace(string? text) =>
+        Assert.Equal("", TranscriptText.ForInsertion(text, addTrailingSpace: true));
 }

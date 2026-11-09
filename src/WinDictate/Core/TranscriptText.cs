@@ -71,6 +71,18 @@ public static class TranscriptText
         new(@"\s*" + RemovedRun + @"\s*", RegexOptions.CultureInvariant);
 
     /// <summary>
+    /// The exact text to insert: trimmed, plus one trailing space when enabled so
+    /// that consecutive dictations do not run together ("Hello there.How are you?").
+    /// Returns "" when there is nothing to insert.
+    /// </summary>
+    public static string ForInsertion(string? text, bool addTrailingSpace)
+    {
+        var trimmed = (text ?? "").Trim();
+        if (trimmed.Length == 0) return "";
+        return addTrailingSpace ? trimmed + " " : trimmed;
+    }
+
+    /// <summary>
     /// Removes Whisper's non-speech annotations and tidies the whitespace they
     /// leave behind, without touching dictated content in brackets.
     /// </summary>

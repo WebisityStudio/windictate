@@ -56,6 +56,7 @@
                         <CheckBox x:Name="KeepClipboardBox" Content="Keep transcript on the clipboard afterwards" Margin="0,10,0,0"/>
                         <TextBlock Text="Paste the dictation again anywhere with Ctrl+V — even if the cursor was not in a text box. When off, paste mode restores your previous clipboard and type mode never touches it."
                                    Foreground="#666" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                        <CheckBox x:Name="TrailingSpaceBox" Content="Add a space after each dictation" Margin="0,10,0,0"/>
                     </StackPanel>
                 </GroupBox>
 

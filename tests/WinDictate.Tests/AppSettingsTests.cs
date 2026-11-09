@@ -40,7 +40,12 @@ public class AppSettingsTests
         Assert.Equal(0.006, settings.SilenceThreshold);   // user's value survives
         Assert.Equal(2, settings.MicDeviceIndex);
         Assert.Equal(new AppSettings().MinVoicedMs, settings.MinVoicedMs);
+        Assert.Equal("", settings.MicDeviceName);
+        Assert.True(settings.AddTrailingSpace);            // new setting is on for existing users too
     }
+
+    [Fact]
+    public void Defaults_AddTrailingSpace() => Assert.True(new AppSettings().AddTrailingSpace);
 
     [Fact]
     public void RoundTrip_PreservesValues()
