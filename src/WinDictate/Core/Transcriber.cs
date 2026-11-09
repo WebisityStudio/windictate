@@ -1,7 +1,6 @@
 using System.IO;
 using System.Net.Http;
 using System.Text;
-using System.Text.RegularExpressions;
 using Whisper.net;
 
 namespace WinDictate.Core;
@@ -130,20 +129,14 @@ public sealed class Transcriber : IDisposable
             await foreach (var segment in processor.ProcessAsync(wav, ct))
                 sb.Append(segment.Text);
 
-            return PostProcess(sb.ToString());
+            // Strips non-speech annotations like [BLANK_AUDIO] or (coughing) but
+            // keeps dictated content in brackets.
+            return TranscriptText.StripAnnotations(sb.ToString());
         }
         finally
         {
             _gate.Release();
         }
-    }
-
-    /// <summary>Strips non-speech annotations like [BLANK_AUDIO] or (coughing).</summary>
-    private static string PostProcess(string raw)
-    {
-        var text = Regex.Replace(raw, @"\[[^\]]*\]|\([^)]*\)", " ");
-        text = Regex.Replace(text, @"\s+", " ").Trim();
-        return text;
     }
 
     public void Dispose()
