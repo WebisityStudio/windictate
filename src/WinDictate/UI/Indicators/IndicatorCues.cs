@@ -50,9 +50,16 @@ internal static class IndicatorCues
     /// <summary>For a result ("Inserted 12 words", "No speech detected", "Not inserted · … press Ctrl+V").</summary>
     public static IndicatorCue ForResult(string? result, bool success)
     {
-        if (success) return new IndicatorCue(CueAction.Done);
-
         string text = (result ?? "").Trim();
+        if (success)
+        {
+            // Inserted, but the user's own clipboard could not be put back: worth saying,
+            // because the dictation is still on the clipboard when they expect it not to be.
+            return text.Contains("clipboard not restored", StringComparison.OrdinalIgnoreCase)
+                ? Notice("Inserted. Clipboard not restored", NoticeKind.Info)
+                : new IndicatorCue(CueAction.Done);
+        }
+
         // Unknown message: show it as it is rather than hide a problem.
         return KnownProblem(text) ?? Notice(Shorten(text), NoticeKind.Warning);
     }
@@ -66,7 +73,10 @@ internal static class IndicatorCues
         if (Begins(text, "No microphone")) return Notice("No microphone found", NoticeKind.Warning);
         if (Begins(text, "Microphone not ready")) return Notice("Microphone wasn't ready", NoticeKind.Warning);
         if (Begins(text, "Cancelled")) return Notice("Cancelled", NoticeKind.Info);
+        if (Begins(text, "Microphone not responding")) return Notice("Microphone not responding", NoticeKind.Warning);
         if (Begins(text, "Not inserted")) return Notice("Copied. Press Ctrl+V", NoticeKind.Info);
+        if (Begins(text, "Focus moved")) return Notice("Focus moved. Press Ctrl+V", NoticeKind.Info);
+        if (Begins(text, "Partly typed")) return Notice("Partly typed. Check, then Ctrl+V", NoticeKind.Warning);
         if (Begins(text, "Couldn't insert")) return Notice("Couldn't insert. Dictate again", NoticeKind.Warning);
         if (Begins(text, "Error")) return Notice("Something went wrong", NoticeKind.Warning);
         return null;

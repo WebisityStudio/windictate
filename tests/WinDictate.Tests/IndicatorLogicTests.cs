@@ -215,12 +215,23 @@ public class IndicatorCuesTests
     [InlineData("Cancelled · hotkey interrupted", "Cancelled", NoticeKind.Info)]
     [InlineData("Not inserted · 12 words in clipboard — press Ctrl+V", "Copied. Press Ctrl+V", NoticeKind.Info)]
     [InlineData("Not inserted · 2 dictations in clipboard — press Ctrl+V", "Copied. Press Ctrl+V", NoticeKind.Info)]
+    [InlineData("Focus moved · 12 words in clipboard — press Ctrl+V", "Focus moved. Press Ctrl+V", NoticeKind.Info)]
+    [InlineData("Partly typed · full text in clipboard — check, then Ctrl+V", "Partly typed. Check, then Ctrl+V", NoticeKind.Warning)]
+    [InlineData("Microphone not responding", "Microphone not responding", NoticeKind.Warning)]
     [InlineData("Couldn't insert or copy — please dictate again", "Couldn't insert. Dictate again", NoticeKind.Warning)]
     [InlineData("Error, see log", "Something went wrong", NoticeKind.Warning)]
     public void Problems_GetOnePlainLine(string result, string expected, NoticeKind kind)
     {
         IndicatorCue cue = IndicatorCues.ForResult(result, success: false);
         Assert.Equal((CueAction.Notice, expected, kind), (cue.Action, cue.Text, cue.Kind));
+    }
+
+    [Fact]
+    public void InsertedButClipboardNotRestored_SaysSo()
+    {
+        // The words went in, but the dictation is still on the clipboard when the user chose otherwise.
+        IndicatorCue cue = IndicatorCues.ForResult("Inserted 12 words · clipboard not restored", success: true);
+        Assert.Equal((CueAction.Notice, "Inserted. Clipboard not restored", NoticeKind.Info), (cue.Action, cue.Text, cue.Kind));
     }
 
     [Fact]
