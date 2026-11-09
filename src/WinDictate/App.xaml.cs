@@ -52,8 +52,11 @@ public partial class App : Application
         _overlay.Show();   // realize the handle so we can set ex-styles
         _overlay.HideOverlay();
 
-        _controller = new DictationController(Dispatcher, _overlay, _settings);
+        OnStatus("Starting…"); // before the model warm-up can report "Ready"
+        _controller = new DictationController(_settings, new OverlayPresenter(Dispatcher, _overlay),
+            new WindowsDictationPlatform(), new Transcriber(), new WindowsTextTarget());
         _controller.StatusChanged += OnStatus;
+        _controller.Start();
 
         _hotkeys = new HotkeyMonitor(_settings.Hotkey);
         _hotkeys.SessionStarted += id => _controller!.OnSessionStarted(id);
@@ -94,7 +97,6 @@ public partial class App : Application
         }
 
         SetupTray();
-        OnStatus("Starting…");
         Logger.Info($"Ready. Hotkey = {_hotkeys.ActiveHotkeyText}");
     }
 
@@ -143,6 +145,7 @@ public partial class App : Application
             ContextMenuStrip = menu
         };
         _tray.DoubleClick += (_, _) => OpenSettings(hotkeyInfo);
+        if (_lastStatus != null) OnStatus(_lastStatus); // a status reported before the tray existed
     }
 
     private void OpenSettings(ToolStripMenuItem hotkeyInfo)
@@ -168,6 +171,9 @@ public partial class App : Application
                      or Microsoft.Win32.SessionSwitchReason.RemoteDisconnect
                      or Microsoft.Win32.SessionSwitchReason.ConsoleDisconnect)
         {
+            // Finished dictations wait, and are then kept on the clipboard rather
+            // than typed into whatever has focus after the unlock.
+            _controller?.SetWorkstationLocked(true);
             _hotkeys?.Reset(); // cancels any active dictation (audio discarded)
         }
         else if (e.Reason is Microsoft.Win32.SessionSwitchReason.SessionUnlock
@@ -175,6 +181,7 @@ public partial class App : Application
                           or Microsoft.Win32.SessionSwitchReason.RemoteConnect
                           or Microsoft.Win32.SessionSwitchReason.ConsoleConnect)
         {
+            _controller?.SetWorkstationLocked(false);
             RefreshHook($"session {e.Reason}");
         }
     }
@@ -184,10 +191,12 @@ public partial class App : Application
         if (e.Mode == Microsoft.Win32.PowerModes.Suspend)
         {
             Logger.Info("Suspending: cancelling any dictation in progress");
+            _controller?.SetSuspended(true);
             _hotkeys?.Reset(); // cancels any active dictation (audio discarded)
         }
         else if (e.Mode == Microsoft.Win32.PowerModes.Resume)
         {
+            _controller?.SetSuspended(false);
             RefreshHook("resume");
         }
     }
@@ -205,11 +214,13 @@ public partial class App : Application
     }
 
     private bool _downloadNotified;
+    private string? _lastStatus; // UI thread only
 
     private void OnStatus(string status)
     {
         Dispatcher.BeginInvoke(() =>
         {
+            _lastStatus = status;
             if (_tray == null) return;
             var text = $"WinDictate - {status}";
             _tray.Text = text.Length > 63 ? text[..63] : text;

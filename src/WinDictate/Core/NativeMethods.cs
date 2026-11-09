@@ -190,7 +190,17 @@ internal static class NativeMethods
         U = new InputUnion { ki = new KEYBDINPUT { wScan = c, dwFlags = KEYEVENTF_UNICODE | (up ? KEYEVENTF_KEYUP : 0) } }
     };
 
-    public static void SendCtrlV()
+    /// <summary>True while Shift, Ctrl, Alt or either Win key is physically held. Not for use inside the hook callback.</summary>
+    public static bool AnyModifierHeld()
+    {
+        foreach (int vk in new[] { 0x10, 0x11, 0x12, 0x5B, 0x5C }) // Shift, Ctrl, Alt, LWin, RWin
+            if ((GetAsyncKeyState(vk) & 0x8000) != 0) return true;
+        return false;
+    }
+
+    /// <summary>Sends Ctrl+V. False if Windows did not accept every event (for example UIPI
+    /// blocking input to an elevated window, or a secure desktop being active).</summary>
+    public static bool SendCtrlV()
     {
         var inputs = new[]
         {
@@ -199,10 +209,11 @@ internal static class NativeMethods
             KeyInput(VK_V, true),
             KeyInput(VK_CONTROL, true)
         };
-        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+        return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>()) == inputs.Length;
     }
 
-    public static void SendUnicodeText(string text)
+    /// <summary>Types text as Unicode key events. False if Windows did not accept every event.</summary>
+    public static bool SendUnicodeText(string text)
     {
         var batch = new List<INPUT>(128);
         for (int i = 0; i < text.Length; i++)
@@ -230,19 +241,27 @@ internal static class NativeMethods
             }
             if (batch.Count >= 120)
             {
-                Flush(batch);
+                if (!Flush(batch)) return false; // stop rather than type a partial, garbled text
                 Thread.Sleep(2);
             }
         }
-        Flush(batch);
+        return Flush(batch);
 
-        static void Flush(List<INPUT> batch)
+        static bool Flush(List<INPUT> batch)
         {
-            if (batch.Count == 0) return;
-            SendInput((uint)batch.Count, batch.ToArray(), Marshal.SizeOf<INPUT>());
+            if (batch.Count == 0) return true;
+            uint sent = SendInput((uint)batch.Count, batch.ToArray(), Marshal.SizeOf<INPUT>());
+            bool ok = sent == batch.Count;
             batch.Clear();
+            return ok;
         }
     }
+
+    // ----- Clipboard -----
+
+    /// <summary>Changes whenever the clipboard's contents change (per window station).</summary>
+    [DllImport("user32.dll")]
+    public static extern uint GetClipboardSequenceNumber();
 
     // ----- Window styles (overlay) -----
 

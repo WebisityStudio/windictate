@@ -9,9 +9,10 @@ namespace WinDictate.Core;
 /// exactly the input format Whisper expects. One instance per dictation session.
 /// Audio never touches disk.
 /// </summary>
-public sealed class AudioRecorder : IDisposable
+public sealed class AudioRecorder : IAudioCapture
 {
     public event Action<float>? LevelChanged; // peak level 0..1 per buffer
+    public event Action? CaptureStarted;      // first buffer arrived: the device really is recording
 
     private WaveInEvent? _waveIn;
     private MemoryStream? _ms;
@@ -22,6 +23,7 @@ public sealed class AudioRecorder : IDisposable
     private readonly List<AudioLevel> _levels = new();
     private long _sampleCount;
     private bool _stopping;
+    private bool _captureStarted;
 
     /// <summary>Product names of the current waveIn capture devices, by index.</summary>
     public static IReadOnlyList<string> DeviceNames()
@@ -62,11 +64,12 @@ public sealed class AudioRecorder : IDisposable
 
     private void OnData(object? sender, WaveInEventArgs e)
     {
+        float peak = 0;
+        bool firstAudio = false;
         lock (_writeLock)
         {
             if (_stopping || _writer == null) return;
             _writer.Write(e.Buffer, 0, e.BytesRecorded);
-            float peak = 0;
             double sumAbs = 0;
             int samples = 0;
             for (int i = 0; i + 1 < e.BytesRecorded; i += 2)
@@ -81,9 +84,15 @@ public sealed class AudioRecorder : IDisposable
             {
                 _levels.Add(new AudioLevel(samples, (float)(sumAbs / samples)));
                 _sampleCount += samples;
+                // StartRecording can return well before audio flows (Bluetooth
+                // headsets switching profile), so the first buffer is the real start.
+                firstAudio = !_captureStarted;
+                _captureStarted = true;
             }
-            LevelChanged?.Invoke(peak);
         }
+        // Raised outside the lock: handlers take the controller's lock.
+        if (firstAudio) CaptureStarted?.Invoke();
+        LevelChanged?.Invoke(peak);
     }
 
     public RecordingResult Stop()

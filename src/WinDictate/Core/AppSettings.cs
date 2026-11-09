@@ -92,6 +92,9 @@ public sealed class AppSettings
 
     internal static string Serialize(AppSettings settings) =>
         JsonSerializer.Serialize(settings, JsonOptions);
+
+    /// <summary>Deep copy, so worker threads use a snapshot that the Settings window never edits in place.</summary>
+    public AppSettings Clone() => Parse(Serialize(this));
 }
 
 public sealed class CleanupSettings

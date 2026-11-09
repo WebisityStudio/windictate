@@ -10,7 +10,7 @@ namespace WinDictate.Core;
 /// on-device. Models are GGML files downloaded once into %APPDATA%\WinDictate\models,
 /// or dropped there manually on machines without internet access.
 /// </summary>
-public sealed class Transcriber : IDisposable
+public sealed class Transcriber : ISpeechToText
 {
     public static string ModelsDir => Path.Combine(AppSettings.DataDir, "models");
     public static string ModelPath(string model) => Path.Combine(ModelsDir, $"ggml-{model}.bin");
@@ -151,7 +151,12 @@ public sealed class Transcriber : IDisposable
 
     public void Dispose()
     {
-        _factory?.Dispose();
-        _gate.Dispose();
+        // Freeing the model under a running load or transcription would crash in
+        // native code, so wait briefly for it; at shutdown the OS reclaims the rest.
+        if (_gate.Wait(TimeSpan.FromSeconds(2)))
+        {
+            _factory?.Dispose();
+            _factory = null;
+        }
     }
 }
