@@ -87,6 +87,21 @@ The log never contains dictated text.
       clipboard was restored).
 - [ ] Insertion mode **Type**: dictate into Notepad. Expected: the text is
       typed, followed by a space.
+- [ ] **Switch window before the text arrives.** Dictate a long sentence into
+      Notepad, release, and immediately click into Word. Expected: nothing is
+      typed into Word. "Focus moved. Press Ctrl+V" appears;
+      back in Notepad, Ctrl+V pastes it.
+- [ ] **Switch field before the text arrives.** In classic Outlook, dictate into
+      the message body, release, and immediately click into the Subject line.
+      Expected: "Focus moved. Press Ctrl+V" and nothing is typed into Subject. (In Edge,
+      Chrome or Teams, WinDictate cannot tell fields apart, so the text goes to
+      wherever the cursor is; note what you see.)
+- [ ] **An undelivered dictation stays on the clipboard.** Make one dictation
+      end with "Copied. Press Ctrl+V" (hold Shift for more than 5 seconds after
+      releasing). Then make a normal dictation, which should be typed in, and
+      press Ctrl+V. Expected: Ctrl+V pastes the earlier, undelivered dictation.
+      This checks that Windows' clipboard change counter behaves as assumed,
+      which could not be tested here.
 - [ ] **Lock right after dictating.** Dictate a long sentence, release, and
       press Win+L at once. Unlock. Expected: the text is not typed in after the
       unlock. "Copied. Press Ctrl+V" appears after you
@@ -106,6 +121,11 @@ The log never contains dictated text.
 
 ## 5. Keyboard hook on its own thread (bug 4)
 
+- [ ] **Offline model change.** Disconnect the network, switch the model in
+      Settings to one that is not downloaded, and save. Expected: the tray
+      shows "Model not ready, check log" and the log records the failed
+      download, but dictation keeps working with the previous model (no
+      "Error, see log"). Switch back and reconnect.
 - [ ] **Model change.** In Settings, switch the model to one that is not
       downloaded (for example `base.en`) and save. While it downloads and then
       loads, type quickly in Notepad, open the tray menu, and drag the

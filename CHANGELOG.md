@@ -24,14 +24,30 @@ no new network calls.
   queue: a new recording can start at any time, results are inserted in the
   order spoken, and nothing is inserted while you are recording or holding a
   modifier key.
+- **Dictations are only inserted where they were started.** If focus has moved
+  to another window, or to another field in apps where Windows exposes it, by the
+  time a dictation is ready, it goes to the clipboard ("Focus moved. Press
+  Ctrl+V") instead of being typed into the new place. This
+  matters more now that dictations queue. Browsers and other single-window apps
+  cannot be checked field by field.
 - **No transcript is lost silently.** In paste mode, if the clipboard can't be
   used, the text is typed instead. If it can't be inserted at all (a key held for
   several seconds, keystrokes rejected by Windows, or the PC locked before
   insertion), it is left on the clipboard, whatever the "Keep
   transcript on the clipboard" setting says. A notice then says "Copied. Press
   Ctrl+V". Further undelivered dictations are
-  added to it, and later dictations don't overwrite it, until you copy
-  something else.
+  added to it, and later dictations are typed rather than pasted so they don't
+  overwrite it, until you copy something else. Text that Windows stopped
+  accepting part-way through is reported as "Partly typed". A failed restore of
+  your own clipboard text is reported too.
+- **The queue cannot stall.** A microphone that never opens is given up after
+  10 seconds ("Microphone not responding"). A missed resume-from-sleep event no
+  longer holds dictations back, because unlocking or starting a new dictation
+  clears it.
+- **Choosing a model that cannot be downloaded no longer breaks dictation.**
+  The new model is loaded in the background; until it is available (for
+  example offline), dictation keeps using the model already loaded instead of
+  trying to download on every dictation.
 - **Keystrokes could lag or the hotkey could stop working.** The keyboard hook
   shared the UI thread with slow work (loading the speech model, clipboard
   retries), and Windows silently removes a hook that responds too slowly. The

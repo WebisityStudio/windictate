@@ -91,6 +91,51 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
 
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct GUITHREADINFO
+    {
+        public int cbSize;
+        public uint flags;
+        public IntPtr hwndActive;
+        public IntPtr hwndFocus;
+        public IntPtr hwndCapture;
+        public IntPtr hwndMenuOwner;
+        public IntPtr hwndMoveSize;
+        public IntPtr hwndCaret;
+        public RECT rcCaret;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO pgui);
+
+    /// <summary>
+    /// The foreground window and, when Windows exposes one, its focused control.
+    /// Cheap and sends no window messages, so it is safe on the keyboard-hook thread.
+    /// (Browsers and other single-window apps report one control for all fields.)
+    /// </summary>
+    public static InsertionTarget CurrentInsertionTarget()
+    {
+        var window = GetForegroundWindow();
+        if (window == IntPtr.Zero) return default;
+        uint thread = GetWindowThreadProcessId(window, out _);
+        var info = new GUITHREADINFO { cbSize = Marshal.SizeOf<GUITHREADINFO>() };
+        IntPtr focus = thread != 0 && GetGUIThreadInfo(thread, ref info) ? info.hwndFocus : IntPtr.Zero;
+        return new InsertionTarget(window, focus);
+    }
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetWindowTextW(IntPtr hWnd, StringBuilder text, int count);
 
@@ -198,8 +243,11 @@ internal static class NativeMethods
         return false;
     }
 
-    /// <summary>Sends Ctrl+V. False if Windows did not accept every event (for example UIPI
-    /// blocking input to an elevated window, or a secure desktop being active).</summary>
+    /// <summary>How much of a SendInput call Windows accepted.</summary>
+    public enum InputDelivery { All, None, Partial }
+
+    /// <summary>Sends Ctrl+V. False if Windows did not accept every event (for example a
+    /// secure desktop being active; UIPI blocking may not be reported).</summary>
     public static bool SendCtrlV()
     {
         var inputs = new[]
@@ -209,12 +257,22 @@ internal static class NativeMethods
             KeyInput(VK_V, true),
             KeyInput(VK_CONTROL, true)
         };
-        return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>()) == inputs.Length;
+        uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+        if (sent == inputs.Length) return true;
+        if (sent > 0)
+        {
+            // Never leave Ctrl logically held down after a half-accepted batch.
+            var release = new[] { KeyInput(VK_CONTROL, true) };
+            SendInput(1, release, Marshal.SizeOf<INPUT>());
+        }
+        return false;
     }
 
-    /// <summary>Types text as Unicode key events. False if Windows did not accept every event.</summary>
-    public static bool SendUnicodeText(string text)
+    /// <summary>Types text as Unicode key events and says how much of it Windows accepted.
+    /// Stops at the first rejected batch rather than typing a garbled remainder.</summary>
+    public static InputDelivery SendUnicodeText(string text)
     {
+        bool anySent = false;
         var batch = new List<INPUT>(128);
         for (int i = 0; i < text.Length; i++)
         {
@@ -241,19 +299,25 @@ internal static class NativeMethods
             }
             if (batch.Count >= 120)
             {
-                if (!Flush(batch)) return false; // stop rather than type a partial, garbled text
+                uint flushed = Flush(batch, out bool complete);
+                anySent |= flushed > 0;
+                if (!complete) return anySent ? InputDelivery.Partial : InputDelivery.None;
                 Thread.Sleep(2);
             }
         }
-        return Flush(batch);
+        uint last = Flush(batch, out bool allSent);
+        anySent |= last > 0;
+        if (allSent) return InputDelivery.All;
+        return anySent ? InputDelivery.Partial : InputDelivery.None;
 
-        static bool Flush(List<INPUT> batch)
+        static uint Flush(List<INPUT> batch, out bool complete)
         {
-            if (batch.Count == 0) return true;
+            complete = true;
+            if (batch.Count == 0) return 0;
             uint sent = SendInput((uint)batch.Count, batch.ToArray(), Marshal.SizeOf<INPUT>());
-            bool ok = sent == batch.Count;
+            complete = sent == batch.Count;
             batch.Clear();
-            return ok;
+            return sent;
         }
     }
 

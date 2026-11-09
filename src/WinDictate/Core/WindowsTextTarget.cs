@@ -19,6 +19,8 @@ internal sealed class WindowsTextTarget : ITextTarget
 
     public long ClipboardSequence => NativeMethods.GetClipboardSequenceNumber();
 
+    public InsertionTarget CurrentTarget() => NativeMethods.CurrentInsertionTarget();
+
     public SendResult SendPaste()
     {
         if (NativeMethods.AnyModifierHeld()) return SendResult.KeysHeld;
@@ -30,16 +32,20 @@ internal sealed class WindowsTextTarget : ITextTarget
     public SendResult TypeText(string text)
     {
         if (NativeMethods.AnyModifierHeld()) return SendResult.KeysHeld;
-        if (NativeMethods.SendUnicodeText(text)) return SendResult.Sent;
-        Logger.Warn($"Windows rejected the typed keystrokes (error {Marshal.GetLastWin32Error()}); an elevated window or secure desktop may have focus");
-        return SendResult.Failed;
+        var delivery = NativeMethods.SendUnicodeText(text);
+        if (delivery == NativeMethods.InputDelivery.All) return SendResult.Sent;
+        int error = Marshal.GetLastWin32Error();
+        bool partial = delivery == NativeMethods.InputDelivery.Partial;
+        Logger.Warn($"Windows rejected {(partial ? "part of the" : "the")} typed keystrokes (error {error}); " +
+                    "an elevated window or secure desktop may have focus");
+        return partial ? SendResult.Partial : SendResult.Failed;
     }
 }
 
 /// <summary>Windows implementation of the controller's OS queries.</summary>
 internal sealed class WindowsDictationPlatform : IDictationPlatform
 {
-    public IntPtr ForegroundWindow() => NativeMethods.GetForegroundWindow();
+    public InsertionTarget CurrentTarget() => NativeMethods.CurrentInsertionTarget();
 
     public bool ModifierKeysHeld() => NativeMethods.AnyModifierHeld();
 
