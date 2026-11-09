@@ -23,6 +23,27 @@ public sealed class AudioRecorder : IDisposable
     private long _sampleCount;
     private bool _stopping;
 
+    /// <summary>Product names of the current waveIn capture devices, by index.</summary>
+    public static IReadOnlyList<string> DeviceNames()
+    {
+        var names = new List<string>();
+        for (int i = 0; i < WaveInEvent.DeviceCount; i++)
+            names.Add(WaveInEvent.GetCapabilities(i).ProductName);
+        return names;
+    }
+
+    /// <summary>
+    /// The device index to record from for these settings: the saved microphone
+    /// by name wherever it is now, or the system default when it is missing.
+    /// </summary>
+    public static int ResolveDevice(AppSettings settings)
+    {
+        var devices = DeviceNames();
+        if (MicrophoneSelector.IsMissing(settings.MicDeviceName, devices))
+            Logger.Warn("Chosen microphone is not connected, recording from the system default");
+        return MicrophoneSelector.Resolve(settings.MicDeviceName, settings.MicDeviceIndex, devices);
+    }
+
     public void Start(int deviceIndex)
     {
         var format = new WaveFormat(SpeechGate.SampleRate, 16, 1);

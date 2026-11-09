@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using NAudio.Wave;
 using WinDictate.Core;
 using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
@@ -13,6 +12,8 @@ namespace WinDictate.UI;
 public partial class SettingsWindow : Window
 {
     private readonly AppSettings _settings;
+    private readonly List<string> _micNames = new(); // current waveIn devices, by index
+    private int _missingMicItem = -1;                // combo index of a "(not connected)" entry
     public event Action? Saved;
 
     public SettingsWindow(AppSettings settings)
@@ -49,14 +50,41 @@ public partial class SettingsWindow : Window
     private void PopulateMics()
     {
         MicBox.Items.Clear();
+        _micNames.Clear();
+        _missingMicItem = -1;
         MicBox.Items.Add("System default");
-        for (int i = 0; i < WaveInEvent.DeviceCount; i++)
+        try { _micNames.AddRange(AudioRecorder.DeviceNames()); }
+        catch (Exception ex) { Logger.Warn("Could not list microphones: " + ex.Message); }
+        for (int i = 0; i < _micNames.Count; i++)
+            MicBox.Items.Add($"{i}: {_micNames[i]}");
+
+        if (MicrophoneSelector.IsMissing(_settings.MicDeviceName, _micNames))
         {
-            var caps = WaveInEvent.GetCapabilities(i);
-            MicBox.Items.Add($"{i}: {caps.ProductName}");
+            // Keep the choice while the device is unplugged, so saving other
+            // settings does not quietly switch it to the system default.
+            _missingMicItem = MicBox.Items.Add($"{_settings.MicDeviceName} (not connected)");
+            MicBox.SelectedIndex = _missingMicItem;
+            return;
         }
-        int idx = _settings.MicDeviceIndex;
-        MicBox.SelectedIndex = (idx >= 0 && idx + 1 < MicBox.Items.Count) ? idx + 1 : 0;
+        int idx = MicrophoneSelector.Resolve(_settings.MicDeviceName, _settings.MicDeviceIndex, _micNames);
+        MicBox.SelectedIndex = idx >= 0 ? idx + 1 : 0;
+    }
+
+    private void SaveMicChoice()
+    {
+        int item = MicBox.SelectedIndex;
+        if (_missingMicItem >= 0 && item == _missingMicItem)
+            return; // chosen microphone is unplugged: keep it as saved
+        if (item <= 0 || item - 1 >= _micNames.Count)
+        {
+            _settings.MicDeviceIndex = MicrophoneSelector.SystemDefault;
+            _settings.MicDeviceName = "";
+        }
+        else
+        {
+            _settings.MicDeviceIndex = item - 1;
+            _settings.MicDeviceName = _micNames[item - 1];
+        }
     }
 
     private void UpdateModelStatus()
@@ -89,7 +117,7 @@ public partial class SettingsWindow : Window
         _settings.VocabularyHint = VocabBox.Text.Trim();
         _settings.InsertMode = TypeRadio.IsChecked == true ? "type" : "paste";
         _settings.KeepInClipboard = KeepClipboardBox.IsChecked == true;
-        _settings.MicDeviceIndex = MicBox.SelectedIndex - 1;
+        SaveMicChoice();
         _settings.Cleanup.Enabled = CleanupEnabled.IsChecked == true;
         _settings.Cleanup.BaseUrl = CleanupUrl.Text.Trim();
         _settings.Cleanup.Model = CleanupModel.Text.Trim();

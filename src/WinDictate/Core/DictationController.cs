@@ -91,7 +91,7 @@ public sealed class DictationController : IDisposable
             recorder.LevelChanged += OnLevel;
             try
             {
-                recorder.Start(_settings.MicDeviceIndex);
+                recorder.Start(AudioRecorder.ResolveDevice(_settings));
             }
             catch (Exception ex)
             {

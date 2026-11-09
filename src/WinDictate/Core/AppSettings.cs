@@ -15,6 +15,10 @@ public sealed class AppSettings
     public bool KeepInClipboard { get; set; } = true; // leave transcript on the clipboard for manual re-paste
     public int ClipboardRestoreDelayMs { get; set; } = 300;
     public int MicDeviceIndex { get; set; } = -1; // -1 = system default
+    // Product name of the chosen microphone, resolved to its current index when
+    // recording starts (indexes shift after docking). "" = system default, or a
+    // settings file from before names were stored (MicDeviceIndex is used as-is).
+    public string MicDeviceName { get; set; } = "";
     public int Threads { get; set; } = 0; // 0 = auto
     // Per-buffer level that always counts as voice; quieter buffers still count
     // when well above the clip's own background (see SpeechGate). Same name and
