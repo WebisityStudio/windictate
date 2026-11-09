@@ -277,6 +277,98 @@ public class AppSmokeTests
         }
     });
 
+    /// <summary>
+    /// A dictation that could not be inserted waits on the clipboard. Checks, with
+    /// the real Windows clipboard and its change counter, that the next dictation
+    /// is typed and leaves that text alone; and that pasting returns to normal once
+    /// the user copies something else, or has had their time.
+    /// </summary>
+    [Fact]
+    public void TextWaitingOnTheClipboard_IsLeftAlone_UntilTheUserCopiesOrTimePasses() => Ui.Run(() =>
+    {
+        const string waiting = "Waiting on the clipboard. ";
+        const string typedNext = "Typed, so the waiting text stays. ";
+        const string pastedAfterCopy = "Pasted again after the user copied. ";
+        const string pastedAfterTime = "Pasted again after the time was up. ";
+
+        var box = new TextBox { Width = 560, Height = 130, FontSize = 16, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12) };
+        var window = new Window
+        {
+            Title = "WinDictate smoke: clipboard protection",
+            Content = box,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            Topmost = true,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen
+        };
+        var target = new WindowsTextTarget();
+        var options = new InsertOptions(TypeMode: false, KeepInClipboard: true, ClipboardRestoreDelayMs: 300);
+        (bool hadText, string? previous) = target.GetClipboardTextAsync().GetAwaiter().GetResult();
+
+        string? OnClipboard()
+        {
+            (bool ok, string? text) = target.GetClipboardTextAsync().GetAwaiter().GetResult();
+            Assert.True(ok, "reading the clipboard");
+            return text;
+        }
+
+        try
+        {
+            window.Show();
+            if (!Ui.TakeForeground(window))
+            {
+                _output.WriteLine("NOT CHECKED: could not give the test window the keyboard focus, so the clipboard protection was not exercised.");
+                Ui.Note("clipboard-protection", "NOT CHECKED: the test window could not take the keyboard focus on this machine");
+                return;
+            }
+            box.Focus();
+            Keyboard.Focus(box);
+            Ui.Pump(200);
+            InsertionTarget here = target.CurrentTarget();
+
+            // 1. While the text waits, the next dictation is typed and the clipboard is untouched.
+            var inserter = new TextInserter(target);
+            Assert.Equal(InsertOutcome.CopiedOnly, inserter.KeepForRecoveryAsync(waiting).GetAwaiter().GetResult().Outcome);
+            inserter.RecoveryAnnounced();
+            Ui.Pump(400); // time for anything else on this desktop to react to the clipboard change
+            InsertResult next = inserter.InsertAsync(typedNext, options, here).GetAwaiter().GetResult();
+            Ui.Pump(700);
+            Assert.Equal(InsertOutcome.Inserted, next.Outcome);
+            Assert.True(next.Typed, "typed rather than pasted while text waits on the clipboard");
+            Assert.True(next.EarlierTextKept);
+            Assert.Equal(typedNext, box.Text);
+            Assert.Equal(waiting, OnClipboard());
+
+            // 2. The user copies something else: pasting is back to normal.
+            Assert.True(target.SetClipboardTextAsync("copied by the user").GetAwaiter().GetResult(), "writing to the clipboard");
+            InsertResult afterCopy = inserter.InsertAsync(pastedAfterCopy, options, here).GetAwaiter().GetResult();
+            Ui.Pump(700);
+            Assert.Equal(InsertOutcome.Inserted, afterCopy.Outcome);
+            Assert.False(afterCopy.Typed, "pasted as usual once the user has copied something else");
+            Assert.Equal(typedNext + pastedAfterCopy, box.Text);
+            Assert.Equal(pastedAfterCopy, OnClipboard());
+
+            // 3. Nothing is copied, but the time to paste runs out: back to normal as well.
+            var brief = new TextInserter(target, protectMs: 500);
+            Assert.Equal(InsertOutcome.CopiedOnly, brief.KeepForRecoveryAsync(waiting).GetAwaiter().GetResult().Outcome);
+            brief.RecoveryAnnounced();
+            Ui.Pump(900);
+            InsertResult afterTime = brief.InsertAsync(pastedAfterTime, options, here).GetAwaiter().GetResult();
+            Ui.Pump(700);
+            Assert.Equal(InsertOutcome.Inserted, afterTime.Outcome);
+            Assert.False(afterTime.Typed, "pasted as usual once the time to paste the waiting text is up");
+            Assert.Equal(typedNext + pastedAfterCopy + pastedAfterTime, box.Text);
+            Assert.Equal(pastedAfterTime, OnClipboard());
+
+            Ui.Capture(window, "clipboard-protection", White);
+            Ui.Note("clipboard-protection", "checked: text waiting on the clipboard was left alone by the next dictation, and pasting returned to normal after a copy and after the time limit");
+        }
+        finally
+        {
+            window.Close();
+            if (hadText && previous != null) target.SetClipboardTextAsync(previous).GetAwaiter().GetResult();
+        }
+    });
+
     [Fact]
     public void KeyboardHook_Installs_IgnoresSyntheticKeys_AndStopsPromptly()
     {
