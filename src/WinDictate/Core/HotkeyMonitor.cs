@@ -6,6 +6,13 @@ namespace WinDictate.Core;
 /// of them is released. Pressing any other key during a session cancels it and
 /// poisons the combo until fully released, so AltGr-style typing (Ctrl+Alt+letter
 /// on many European layouts) never produces an accidental dictation.
+///
+/// Key state: <see cref="OnKeyEvent"/> is called from inside the WH_KEYBOARD_LL
+/// callback, and Windows updates the asynchronous key state only after that
+/// callback returns. During an event, <see cref="PhysicalKeyCheck"/> therefore
+/// still reports the event's own key in its previous state, so that key is always
+/// taken from the event; every other key's probe is current. Methods called off
+/// the hook thread (<see cref="Reset"/>) can probe any key.
 /// </summary>
 public sealed class HotkeyMonitor
 {
@@ -107,7 +114,8 @@ public sealed class HotkeyMonitor
             {
                 if (down)
                 {
-                    // Self-heal: forget keys whose release we never saw.
+                    // Self-heal: forget keys whose release we never saw. Only other
+                    // keys are probed; the event's own key would read stale here.
                     _down.RemoveWhere(k => k != vk && !PhysicalKeyCheck(k));
                     _down.Add(vk);
                 }
@@ -130,7 +138,11 @@ public sealed class HotkeyMonitor
                 endedCancelled = false;
             }
 
-            if (_poisoned && _down.Count == 0 && !AnyRequiredPhysicallyDown())
+            // Fully released: lift the poison. Probing the key being released
+            // would still report it as down (its async state is updated after
+            // this callback), which used to keep the hotkey dead after a cancel
+            // until some unrelated key was typed.
+            if (_poisoned && _down.Count == 0 && !AnyRequiredDown(vk, down))
                 _poisoned = false;
         }
 
@@ -141,7 +153,8 @@ public sealed class HotkeyMonitor
     /// <summary>
     /// Forget all key state without firing events. Used after a forced session
     /// stop (max recording duration). If the combo is still physically held the
-    /// monitor stays poisoned until everything is released.
+    /// monitor stays poisoned until everything is released. Called off the hook
+    /// thread (timer, UI), where every probe is current.
     /// </summary>
     public void Reset()
     {
@@ -155,4 +168,9 @@ public sealed class HotkeyMonitor
 
     private bool AnyRequiredPhysicallyDown() =>
         _required.Any(t => t.Any(v => PhysicalKeyCheck(v)));
+
+    /// <summary>Like <see cref="AnyRequiredPhysicallyDown"/>, but inside a key event:
+    /// the event's own key comes from the event, the rest from probes.</summary>
+    private bool AnyRequiredDown(int eventVk, bool eventDown) =>
+        _required.Any(t => t.Any(v => v == eventVk ? eventDown : PhysicalKeyCheck(v)));
 }

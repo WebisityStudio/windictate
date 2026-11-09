@@ -24,16 +24,21 @@ public class HotkeyMonitorTests
         _monitor.SessionEnded += cancelled => _events.Add(cancelled ? "cancel" : "end");
     }
 
+    // These helpers model Windows: the low-level hook callback runs *before*
+    // the asynchronous key state is updated, so while OnKeyEvent runs the probe
+    // still reports the event's own key in its previous state. The physical
+    // state only changes after the callback returns.
+
     private void Press(int vk)
     {
-        _physicallyDown.Add(vk);
         _monitor.OnKeyEvent(vk, true);
+        _physicallyDown.Add(vk);
     }
 
     private void Release(int vk)
     {
-        _physicallyDown.Remove(vk);
         _monitor.OnKeyEvent(vk, false);
+        _physicallyDown.Remove(vk);
     }
 
     [Fact]
@@ -111,6 +116,26 @@ public class HotkeyMonitorTests
         Assert.Equal(new[] { "start", "cancel", "start" }, _events);
     }
 
+    [Theory]
+    [InlineData(LAlt, LCtrl)]
+    [InlineData(LCtrl, LAlt)]
+    public void CancelThenFullRelease_NextHoldStartsAgain_EveryTime(int releasedFirst, int releasedLast)
+    {
+        // Regression: the final key-up probed the key being released, which the
+        // OS still reports as down inside the hook, so the poison never cleared
+        // and every later hold did nothing until an unrelated key was typed.
+        for (int round = 0; round < 3; round++)
+        {
+            Press(LCtrl);
+            Press(LAlt);
+            Press(Esc);
+            Release(Esc);
+            Release(releasedFirst);
+            Release(releasedLast);
+        }
+        Assert.Equal(new[] { "start", "cancel", "start", "cancel", "start", "cancel" }, _events);
+    }
+
     [Fact]
     public void Disabled_ProducesNothing()
     {
@@ -157,6 +182,19 @@ public class HotkeyMonitorTests
     }
 
     [Fact]
+    public void Reset_WithoutAutoRepeat_StillRearmsAfterFullRelease()
+    {
+        Press(LCtrl);
+        Press(LAlt);
+        _monitor.Reset();                 // keys held: poisoned, key state forgotten
+        Release(LCtrl);
+        Release(LAlt);                    // last key-up must lift the poison
+        Press(LCtrl);
+        Press(LAlt);
+        Assert.Equal(new[] { "start", "start" }, _events);
+    }
+
+    [Fact]
     public void InvalidHotkey_FallsBackToCtrlAlt()
     {
         var monitor = new HotkeyMonitor("Foo+Bar");
@@ -172,10 +210,10 @@ public class HotkeyMonitorTests
         monitor.SessionStarted += () => events.Add("start");
         monitor.SessionEnded += c => events.Add(c ? "cancel" : "end");
 
-        _physicallyDown.Add(RCtrl);
         monitor.OnKeyEvent(RCtrl, true);
-        _physicallyDown.Remove(RCtrl);
+        _physicallyDown.Add(RCtrl);
         monitor.OnKeyEvent(RCtrl, false);
+        _physicallyDown.Remove(RCtrl);
         Assert.Equal(new[] { "start", "end" }, events);
     }
 }
