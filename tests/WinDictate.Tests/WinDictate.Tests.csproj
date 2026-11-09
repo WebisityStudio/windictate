@@ -29,6 +29,11 @@
     <Compile Include="..\..\src\WinDictate\Core\TextInserter.cs" Link="Linked\TextInserter.cs" />
     <Compile Include="..\..\src\WinDictate\Core\Transcriber.cs" Link="Linked\Transcriber.cs" />
     <Compile Include="..\..\src\WinDictate\Core\TranscriptText.cs" Link="Linked\TranscriptText.cs" />
+    <!-- The listening indicators' logic; the windows themselves are covered by tests/WinDictate.UiSmoke on Windows. -->
+    <Compile Include="..\..\src\WinDictate\UI\Indicators\IDictationIndicator.cs" Link="Linked\Indicators\IDictationIndicator.cs" />
+    <Compile Include="..\..\src\WinDictate\UI\Indicators\IndicatorCues.cs" Link="Linked\Indicators\IndicatorCues.cs" />
+    <Compile Include="..\..\src\WinDictate\UI\Indicators\IndicatorPlacement.cs" Link="Linked\Indicators\IndicatorPlacement.cs" />
+    <Compile Include="..\..\src\WinDictate\UI\Indicators\WaveformShaper.cs" Link="Linked\Indicators\WaveformShaper.cs" />
   </ItemGroup>
 
   <ItemGroup>

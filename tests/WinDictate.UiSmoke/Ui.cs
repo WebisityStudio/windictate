@@ -133,6 +133,34 @@ internal static class Ui
         return CountDrawnPixels(drawn);
     }
 
+    /// <summary>
+    /// Tries to give a window the keyboard focus. Windows may refuse (a test
+    /// process is not always allowed to take the foreground), so callers must
+    /// check the result rather than assume it.
+    /// </summary>
+    public static bool TakeForeground(Window window)
+    {
+        IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            if (attempt == 1)
+            {
+                // A known nudge: Windows allows the switch after an Alt tap.
+                Win32.keybd_event(Win32.VK_MENU, 0, 0, UIntPtr.Zero);
+                Win32.keybd_event(Win32.VK_MENU, 0, Win32.KEYEVENTF_KEYUP, UIntPtr.Zero);
+            }
+            window.Activate();
+            Win32.SetForegroundWindow(hwnd);
+            Pump(250);
+            if (Win32.GetForegroundWindow() == hwnd) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Records something a person reading the results should know (for example a check that could not run).</summary>
+    public static void Note(string name, string text) =>
+        File.AppendAllText(Path.Combine(OutputDir, "notes.txt"), $"{name}: {text}{Environment.NewLine}");
+
     private static int CountDrawnPixels(BitmapSource bitmap)
     {
         int stride = bitmap.PixelWidth * 4;
@@ -182,6 +210,18 @@ internal static class Win32
 
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    public const byte VK_MENU = 0x12;   // Alt
+    public const byte VK_F24 = 0x87;    // a key nothing listens for
+    public const uint KEYEVENTF_KEYUP = 0x0002;
+
+    /// <summary>Synthesises a key event (Windows marks it as injected).</summary>
+    [DllImport("user32.dll")]
+    public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
 
     [DllImport("user32.dll")]
     public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);

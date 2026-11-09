@@ -1,14 +1,15 @@
 name: ui-smoke
 
-# Opens the real listening indicators on a Windows desktop, walks them through
-# every state, and uploads pictures of what was drawn. Separate from `build`
-# because it needs a desktop session and only matters when the UI changes.
+# Opens the real windows on a Windows desktop: walks the listening indicators
+# through every state, opens Settings, and checks the Windows-only plumbing
+# (clipboard, typing, pasting, the keyboard hook). Uploads pictures of what was
+# drawn. Separate from `build` because it needs a desktop session.
 
 on:
   push:
     branches: [ 'feature/**' ]
     paths:
-      - 'src/WinDictate/UI/**'
+      - 'src/**'
       - 'tests/WinDictate.UiSmoke/**'
       - '.github/workflows/ui-smoke.yml'
   workflow_dispatch:
@@ -29,7 +30,7 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Run the indicator smoke tests
+      - name: Run the Windows smoke tests
         env:
           UI_SMOKE_OUT: '${{ github.workspace }}\ui-smoke-out'
         run: dotnet test tests/WinDictate.UiSmoke/WinDictate.UiSmoke.csproj -c Release --logger "console;verbosity=normal"
