@@ -62,7 +62,7 @@
 
                 <GroupBox Header="Custom words / acronyms (optional)" Padding="10" Margin="0,0,0,12">
                     <StackPanel>
-                        <TextBlock Text="Comma-separated terms to bias recognition, e.g. HSBC, KYC, Onboarding:" Foreground="#666" Margin="0,0,0,4"/>
+                        <TextBlock Text="Comma-separated terms to bias recognition, e.g. KYC, ISA, onboarding:" Foreground="#666" Margin="0,0,0,4"/>
                         <TextBox x:Name="VocabBox" Height="44" TextWrapping="Wrap" AcceptsReturn="True"/>
                     </StackPanel>
                 </GroupBox>
