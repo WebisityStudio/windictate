@@ -18,6 +18,7 @@
   <ItemGroup>
     <Compile Include="..\..\src\WinDictate\Core\AppSettings.cs" Link="Linked\AppSettings.cs" />
     <Compile Include="..\..\src\WinDictate\Core\HotkeyMonitor.cs" Link="Linked\HotkeyMonitor.cs" />
+    <Compile Include="..\..\src\WinDictate\Core\HotkeyWatchdog.cs" Link="Linked\HotkeyWatchdog.cs" />
     <Compile Include="..\..\src\WinDictate\Core\Logger.cs" Link="Linked\Logger.cs" />
     <Compile Include="..\..\src\WinDictate\Core\MicrophoneSelector.cs" Link="Linked\MicrophoneSelector.cs" />
     <Compile Include="..\..\src\WinDictate\Core\NativeMethods.cs" Link="Linked\NativeMethods.cs" />

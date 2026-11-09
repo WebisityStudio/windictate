@@ -15,7 +15,7 @@ namespace WinDictate.Core;
 public sealed class DictationController : IDisposable
 {
     public event Action<string>? StatusChanged;  // tray tooltip / icon
-    public event Action? MaxDurationReached;     // lets the app reset the hotkey monitor
+    public event Action<long>? MaxDurationReached; // hotkey session id: the app asks the monitor to stop it
 
     private readonly Dispatcher _dispatcher;
     private readonly OverlayWindow _overlay;
@@ -28,6 +28,7 @@ public sealed class DictationController : IDisposable
 
     private sealed class Session
     {
+        public long HotkeyId;
         public readonly Stopwatch Held = Stopwatch.StartNew();
         public Task<AudioRecorder?> StartTask = Task.FromResult<AudioRecorder?>(null);
         public readonly CancellationTokenSource OverlayDelay = new();
@@ -73,13 +74,13 @@ public sealed class DictationController : IDisposable
 
     // ----- Hotkey held (hook thread: flip state, defer the real work) -----
 
-    public void OnSessionStarted()
+    public void OnSessionStarted(long hotkeyId)
     {
         Session session;
         lock (_sync)
         {
             if (_busy || _current != null) return;
-            session = new Session();
+            session = new Session { HotkeyId = hotkeyId };
             _current = session;
         }
 
@@ -138,22 +139,23 @@ public sealed class DictationController : IDisposable
             if (!ReferenceEquals(_current, session) || session.Ended) return;
         }
         Logger.Warn($"Recording hit the {_settings.MaxRecordSeconds}s limit, stopping");
-        MaxDurationReached?.Invoke(); // monitor forgets the held combo
-        OnSessionEnded(false);
+        // The hotkey monitor ends the session (Stopped) and ignores the still-held
+        // keys; its SessionEnded event then finishes this session as usual.
+        MaxDurationReached?.Invoke(session.HotkeyId);
     }
 
     private void OnLevel(float peak) => _dispatcher.BeginInvoke(() => _overlay.SetLevel(peak));
 
     // ----- Hotkey released or cancelled (hook thread or max-duration timer) -----
 
-    public void OnSessionEnded(bool cancelled)
+    public void OnSessionEnded(long hotkeyId, SessionEndReason reason)
     {
         Session? session;
         lock (_sync)
         {
             session = _current;
+            if (session == null || session.HotkeyId != hotkeyId) return;
             _current = null;
-            if (session == null) return;
             session.Ended = true;
             _busy = true;
         }
@@ -161,11 +163,12 @@ public sealed class DictationController : IDisposable
         session.MaxTimer?.Dispose();
         long heldMs = session.Held.ElapsedMilliseconds;
 
-        _ = Task.Run(() => RunPipelineAsync(session, cancelled, heldMs));
+        _ = Task.Run(() => RunPipelineAsync(session, reason, heldMs));
     }
 
-    private async Task RunPipelineAsync(Session session, bool cancelled, long heldMs)
+    private async Task RunPipelineAsync(Session session, SessionEndReason reason, long heldMs)
     {
+        bool cancelled = !reason.KeepsAudio();
         try
         {
             AudioRecorder? recorder = await session.StartTask;
@@ -178,6 +181,15 @@ public sealed class DictationController : IDisposable
             RecordingResult rec;
             try { rec = recorder.Stop(); }
             finally { recorder.Dispose(); }
+
+            if (reason == SessionEndReason.KeysLost)
+            {
+                // The release never reached the hook (secure desktop, UAC prompt,
+                // elevated window): nothing heard since then is meant for insertion.
+                Logger.Warn("Dictation cancelled: hotkey no longer held but its release was not seen");
+                await ShowFlash("Cancelled · hotkey interrupted", false);
+                return;
+            }
 
             if (cancelled || heldMs < _settings.MinHoldMs)
             {
