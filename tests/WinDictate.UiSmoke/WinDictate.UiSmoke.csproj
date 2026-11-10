@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows-only smoke tests. They open the real windows: the listening
+    indicators (every state, click-through, unfocused, resting on the taskbar
+    edge), the Settings window, and a text box that the app's own typing and
+    pasting code writes into. They also start and stop the keyboard hook. Each
+    step saves a picture of what was drawn.
+
+    Run by .github/workflows/ui-smoke.yml, or locally on Windows with
+    `dotnet test tests/WinDictate.UiSmoke`. They are kept apart from the
+    cross-platform unit tests because they need a Windows desktop session.
+    Running them locally briefly shows windows, types into a test window and
+    uses the clipboard (the previous clipboard text is put back).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>WinDictate.UiSmoke</RootNamespace>
+    <!-- WPF0001: the tests force the Settings window's light and dark looks through WPF's ThemeMode. -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WinDictate\WinDictate.csproj" />
+  </ItemGroup>
+
+</Project>

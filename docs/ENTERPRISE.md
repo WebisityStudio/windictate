@@ -24,7 +24,7 @@ by pre-staging the model file (see below).
 
 ## Privacy posture (defaults)
 
-- No audio persisted. Captured audio lives in a memory buffer and is released after transcription.
+- No audio persisted. Captured audio lives in a memory buffer and is released after transcription. The microphone test in Settings only measures loudness for a few seconds; that audio is discarded and never transcribed.
 - No transcript history. Off by default; when on, it is a local file only.
 - No telemetry. The app phones home to nothing.
 - The event log records operational events (start/stop, errors) but **never transcript or clipboard contents** unless history is explicitly enabled.
@@ -38,22 +38,41 @@ by pre-staging the model file (see below).
 
 ## Deployment
 
-- Self-contained build - no .NET runtime install needed on endpoints.
+- Self-contained build on .NET 10 (long-term support, until November 2028) - no
+  .NET runtime install needed on endpoints. Because the runtime is bundled, a
+  .NET security update reaches endpoints through a new WinDictate build.
 - Ships as a folder (zip). Can be wrapped in MSI/Intune for managed rollout.
 - Settings live in `%APPDATA%\WinDictate\settings.json` (per-user). A managed default
   can be pushed by deploying a pre-populated `settings.json`.
 - Runs as a normal user (`asInvoker`); no elevation required.
+- **Start with Windows** is off by default. When a user switches it on in
+  Settings, the app writes one value, `WinDictate`, under
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (current user only), and
+  deletes it when switched off. Nothing else is registered: no service, no
+  scheduled task, nothing machine-wide. If you would rather start it by policy
+  (or your endpoint protection objects to a user-written Run entry), leave the
+  switch off and deploy the startup entry yourselves.
 
 ## Things a security review will want to confirm
 
 - The global keyboard hook (`WH_KEYBOARD_LL`) is **passive** - it observes modifier
   keys to detect the hotkey and never swallows or records keystrokes. Injected
-  (synthetic) events are ignored. Source: `src/WinDictate/Core/KeyboardHook.cs`.
+  (synthetic) events are ignored. It runs on its own thread, separate from the UI,
+  and a watchdog ends a dictation whose key release Windows never delivered
+  (secure desktop, UAC prompt) so the microphone cannot stay open.
+  Source: `src/WinDictate/Core/KeyboardHook.cs`, `HotkeyMonitor.cs`, `HotkeyWatchdog.cs`.
 - Clipboard handling never logs clipboard contents. By default the transcript is
   left on the clipboard after insertion so the user can re-paste it; the
   "keep on clipboard" setting can be turned off, in which case the prior clipboard
-  is saved in memory only and restored after the paste.
-  Source: `src/WinDictate/Core/TextInserter.cs`.
+  is saved in memory only and restored after the paste. A dictation that cannot be
+  inserted at all is left on the clipboard regardless of that setting (and the user
+  is told), so it is not lost.
+  Source: `src/WinDictate/Core/TextInserter.cs`, `WindowsTextTarget.cs`, `ClipboardAccess.cs`.
+- Text is only typed or pasted if keyboard focus is still in the window (and, where
+  Windows exposes it, the control) in which the dictation was started; otherwise it
+  is left on the clipboard. This guards against a dictation landing in a different
+  application, such as a chat window. Single-window apps such as browsers cannot be
+  checked field by field.
 - Model files are fetched over HTTPS from the official whisper.cpp distribution.
 - The optional cleanup endpoint, model, and key are operator-configured; nothing is hard-coded.
 

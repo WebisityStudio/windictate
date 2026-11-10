@@ -5,14 +5,14 @@
 - Local microphone capture (NAudio, 16 kHz mono, in memory)
 - Local transcription (whisper.cpp via Whisper.net), model auto-download
 - Clipboard-paste and keystroke insertion modes; transcript kept on the clipboard for re-pasting (optional clipboard restore instead)
-- Recording overlay with live mic level and target-window display
+- Quiet listening indicator (glass pill or edge glow) with a live waveform
 - System-tray app, settings window, JSON config
 - Optional AI cleanup via OpenAI-compatible endpoint
 - Privacy defaults: no audio on disk, no history, no telemetry
-- Unit-tested hotkey state machine (AltGr, secure-desktop self-heal), run in Windows CI
+- Unit tests for the hotkey state machine and watchdog, the dictation queue, insertion fallbacks and transcript clean-up; they run on any OS and in Windows CI
 
 ## v0.2 - usability
-- Configurable overlay position and size
+- Configurable indicator position
 - Per-app insertion preference (paste vs type)
 - Retry / re-insert last transcript
 - Better silence/VAD trimming before transcription
@@ -39,4 +39,6 @@
 - Endpoint-security tools may block the low-level keyboard hook
 - No GPU acceleration in the default CPU runtime
 - Latency scales with model size and CPU; `small.en` is the balance point
-- Insertion targets whatever has focus - no per-field validation
+- Inside browsers and other single-window apps (Edge, Chrome, Teams, new Outlook), a move to another field cannot be detected, so the text goes to wherever the cursor is
+- Dictations still being transcribed when you quit WinDictate are discarded
+- For half a minute after a "press Ctrl+V" notice, later dictations are typed rather than pasted and are not copied to the clipboard

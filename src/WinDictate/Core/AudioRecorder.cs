@@ -4,16 +4,15 @@ using NAudio.Wave;
 
 namespace WinDictate.Core;
 
-public sealed record RecordingResult(byte[] WavBytes, double DurationSeconds, double AverageLevel);
-
 /// <summary>
 /// Records microphone audio to an in-memory 16 kHz mono 16-bit WAV, which is
 /// exactly the input format Whisper expects. One instance per dictation session.
 /// Audio never touches disk.
 /// </summary>
-public sealed class AudioRecorder : IDisposable
+public sealed class AudioRecorder : IAudioCapture
 {
     public event Action<float>? LevelChanged; // peak level 0..1 per buffer
+    public event Action? CaptureStarted;      // first buffer arrived: the device really is recording
 
     private WaveInEvent? _waveIn;
     private MemoryStream? _ms;
@@ -21,13 +20,35 @@ public sealed class AudioRecorder : IDisposable
     private readonly TaskCompletionSource<bool> _stopped =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _writeLock = new();
-    private double _sumAbs;
+    private readonly List<AudioLevel> _levels = new();
     private long _sampleCount;
     private bool _stopping;
+    private bool _captureStarted;
+
+    /// <summary>Product names of the current waveIn capture devices, by index.</summary>
+    public static IReadOnlyList<string> DeviceNames()
+    {
+        var names = new List<string>();
+        for (int i = 0; i < WaveInEvent.DeviceCount; i++)
+            names.Add(WaveInEvent.GetCapabilities(i).ProductName);
+        return names;
+    }
+
+    /// <summary>
+    /// The device index to record from for these settings: the saved microphone
+    /// by name wherever it is now, or the system default when it is missing.
+    /// </summary>
+    public static int ResolveDevice(AppSettings settings)
+    {
+        var devices = DeviceNames();
+        if (MicrophoneSelector.IsMissing(settings.MicDeviceName, devices))
+            Logger.Warn("Chosen microphone is not connected, recording from the system default");
+        return MicrophoneSelector.Resolve(settings.MicDeviceName, settings.MicDeviceIndex, devices);
+    }
 
     public void Start(int deviceIndex)
     {
-        var format = new WaveFormat(16000, 16, 1);
+        var format = new WaveFormat(SpeechGate.SampleRate, 16, 1);
         _ms = new MemoryStream();
         _writer = new WaveFileWriter(new IgnoreDisposeStream(_ms), format);
         _waveIn = new WaveInEvent
@@ -43,21 +64,35 @@ public sealed class AudioRecorder : IDisposable
 
     private void OnData(object? sender, WaveInEventArgs e)
     {
+        float peak = 0;
+        bool firstAudio = false;
         lock (_writeLock)
         {
             if (_stopping || _writer == null) return;
             _writer.Write(e.Buffer, 0, e.BytesRecorded);
-            float peak = 0;
+            double sumAbs = 0;
+            int samples = 0;
             for (int i = 0; i + 1 < e.BytesRecorded; i += 2)
             {
                 short sample = BitConverter.ToInt16(e.Buffer, i);
                 float abs = Math.Abs((int)sample) / 32768f;
                 if (abs > peak) peak = abs;
-                _sumAbs += abs;
-                _sampleCount++;
+                sumAbs += abs;
+                samples++;
             }
-            LevelChanged?.Invoke(peak);
+            if (samples > 0)
+            {
+                _levels.Add(new AudioLevel(samples, (float)(sumAbs / samples)));
+                _sampleCount += samples;
+                // StartRecording can return well before audio flows (Bluetooth
+                // headsets switching profile), so the first buffer is the real start.
+                firstAudio = !_captureStarted;
+                _captureStarted = true;
+            }
         }
+        // Raised outside the lock: handlers take the controller's lock.
+        if (firstAudio) CaptureStarted?.Invoke();
+        LevelChanged?.Invoke(peak);
     }
 
     public RecordingResult Stop()
@@ -73,11 +108,9 @@ public sealed class AudioRecorder : IDisposable
             _stopping = true;
             _writer.Dispose(); // finalizes the WAV header inside _ms
             _writer = null;
+            double duration = _sampleCount / (double)SpeechGate.SampleRate;
+            return new RecordingResult(_ms.ToArray(), duration, _levels.ToArray());
         }
-
-        double duration = _sampleCount / 16000.0;
-        double average = _sampleCount > 0 ? _sumAbs / _sampleCount : 0;
-        return new RecordingResult(_ms.ToArray(), duration, average);
     }
 
     public void Dispose()

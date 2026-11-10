@@ -27,7 +27,10 @@ regulated environment. WinDictate keeps the whole speech path on the laptop.
 - **Global hold-to-talk hotkey** (default **Ctrl + Alt**). Hold, speak, release.
 - **Fully local transcription** via [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (through the Whisper.net bindings). Works with no internet once the model is present.
 - **Pastes into the focused app** using the clipboard or, optionally, by simulating keystrokes. By default the transcript **stays on the clipboard** afterwards, so you can paste it again anywhere with Ctrl+V - even if the cursor wasn't in a text box when you released the hotkey. A setting switches this off to restore your previous clipboard instead.
-- **A small recording overlay** shows it is listening, a live mic level, and which window it will insert into.
+- **Back-to-back dictation**: start the next dictation while the last one is still being transcribed; results are inserted in the order you spoke them, each followed by a space (a setting turns the space off).
+- **Only types where you started**: if you move to another window (or, in apps that expose it, another field) before a dictation is ready, it is not typed there; it goes to the clipboard instead.
+- **Never drops a dictation silently**: if the text cannot be inserted (focus moved, a key stays held down, or Windows rejects the keystrokes), it is left on the clipboard and a short notice tells you to press Ctrl+V. For the next half minute (or until you copy something else), later dictations are typed rather than pasted, so they do not replace it before you have had time to paste it.
+- **A quiet listening indicator**: a small glass pill above the taskbar with a live waveform, or, if you prefer, just a soft glow along the taskbar edge. It is click-through, never takes focus, appears on the screen you are working on, and shows words only when something needs your attention.
 - **System-tray app** - runs quietly, no main window. Right-click for settings.
 - **Optional AI cleanup** (off by default): fix punctuation, capitalisation and filler words via any OpenAI-compatible endpoint - the public API *or* an internal gateway URL. If it fails or times out, the raw local transcript is used.
 - **Privacy-first defaults**: no audio is ever written to disk; no transcript history unless you switch it on.
@@ -36,7 +39,7 @@ regulated environment. WinDictate keeps the whole speech path on the laptop.
 
 ```
 Hold Ctrl+Alt
-  -> overlay appears, microphone records (16 kHz mono, in memory only)
+  -> the listening indicator appears, microphone records (16 kHz mono, in memory only)
 Release Ctrl+Alt
   -> local Whisper transcribes the audio on-device
   -> (optional) cleanup model fixes punctuation/formatting
@@ -47,6 +50,15 @@ Release Ctrl+Alt
 The keyboard, microphone and insertion all happen locally. Only the optional
 cleanup step can involve a network call, and only if you enable it and provide an
 endpoint.
+
+## Requirements
+
+- **Windows 11** (x64). The speech engine's native runtime (Whisper.net) requires Windows 11 or Windows Server 2022 or newer.
+- **Microsoft Visual C++ Redistributable for Visual Studio 2022 (x64)**, which the speech engine's native library needs. Get it from Microsoft's [latest supported Visual C++ Redistributable downloads](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170#latest-microsoft-visual-c-redistributable-version) page.
+- **A CPU with AVX2** (plus AVX, FMA and F16C). Intel Core and AMD Ryzen processors from the last decade have them; some low-end Celeron, Pentium and Atom chips do not.
+- A microphone, and roughly 0.5-2 GB of disk space for the speech model.
+
+If the tray tooltip says *"Model not ready, check log"* right after start-up even though the model file is present, the Visual C++ Redistributable or the CPU features are the usual cause.
 
 ## Install
 
@@ -64,7 +76,7 @@ endpoint.
 
 - **Hold Ctrl + Alt**, speak a sentence or two, then **release**. The text appears where your cursor is.
 - Press any other key while holding to **cancel** the current dictation.
-- Right-click the tray icon for **Settings**: hotkey, model, microphone, insertion mode, custom vocabulary, and the optional cleanup endpoint.
+- Right-click the tray icon for **Settings**. The everyday choices are up front in plain words: the listening indicator, *Start with Windows*, the microphone (with a test), speech quality, and what happens to the clipboard and history. The shortcut keys, pasting or typing, which microphone and speech model to use, custom words and the optional cleanup service are under **Advanced**.
 
 ## Models
 
@@ -86,19 +98,22 @@ languages, set the language to `auto` in settings and use a non-`.en` model.
 - **Cleanup** is opt-in. With it off, WinDictate makes **no network calls at all** (after the one-time model download).
 - **No API keys are required** for the core product. A key is only needed if you point cleanup at an endpoint that requires one.
 - By default the transcript is **kept on the clipboard** after insertion as a safety net (so a dictation is never lost if the focus wasn't a text box). For stricter clipboard hygiene, untick *"Keep transcript on the clipboard afterwards"* in Settings: paste mode then saves your previous clipboard in memory and restores it within a few hundred milliseconds, and its contents are never logged. Only text is restored in that mode: if the clipboard held an image or files, it is cleared after insertion rather than left holding the transcript. Combine it with the "type" insertion mode to avoid the clipboard entirely.
+- Whatever that setting says, a dictation that **could not be inserted** (focus moved to another window or field, keys held for several seconds, keystrokes rejected by Windows, or the workstation locked before it was inserted) is left on the clipboard, and a notice says so, rather than being thrown away or typed into the wrong place.
 
 See [docs/ENTERPRISE.md](docs/ENTERPRISE.md) for a deployment and governance summary
 aimed at IT / security teams.
 
 ## Build from source
 
-Requires the .NET 8 SDK.
+Requires the .NET 10 SDK.
 
 ```powershell
 dotnet publish src/WinDictate/WinDictate.csproj -c Release -r win-x64 --self-contained true -o publish/WinDictate
 ```
 
 Run `publish/WinDictate/WinDictate.exe`.
+
+`dotnet test` runs the unit tests (hotkey state machine and watchdog, dictation queue, insertion fallbacks, transcript clean-up, speech gate, settings). They target plain .NET 10, so they also run on macOS and Linux. [docs/TESTING.md](docs/TESTING.md) has the manual checks that need a real Windows machine.
 
 ## Status
 

@@ -1,97 +1,374 @@
 <Window x:Class="WinDictate.UI.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="WinDictate Settings" Height="640" Width="540"
-        WindowStartupLocation="CenterScreen"
-        FontFamily="Segoe UI" FontSize="13"
-        ResizeMode="CanMinimize" Background="#FAFAFA">
-    <Grid Margin="20">
+        Title="WinDictate Settings" Width="520" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize"
+        ThemeMode="System" UseLayoutRounding="True">
+    <!--
+        Looks: Windows 11's own controls, light/dark and high-contrast colours come
+        from WPF's Fluent theme (ThemeMode above). The brushes named below are that
+        theme's. The window background is Windows' blurred glass where available
+        (see WindowBackdrop). One accent, the user's Windows accent colour, is used
+        only where something is switched on.
+    -->
+    <Window.Resources>
+        <Style x:Key="GroupLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <Setter Property="Margin" Value="0,12,0,0"/>
+        </Style>
+
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <Setter Property="Margin" Value="0,10,0,4"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+
+        <!-- One setting: its name (Header) and a line of explanation (Tag) on the left, its control on the right. -->
+        <Style x:Key="Row" TargetType="HeaderedContentControl">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="IsTabStop" Value="False"/>
+            <Setter Property="BorderThickness" Value="0,1,0,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="HeaderedContentControl">
+                        <Border BorderThickness="{TemplateBinding BorderThickness}" Padding="0,6"
+                                BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Header, RelativeSource={RelativeSource TemplatedParent}}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                    <TextBlock x:Name="Explanation" Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="12" TextWrapping="Wrap" Margin="0,1,0,0"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                                <ContentPresenter Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Tag" Value="{x:Null}">
+                                <Setter TargetName="Explanation" Property="Visibility" Value="Collapsed"/>
+                            </Trigger>
+                            <Trigger Property="Tag" Value="">
+                                <Setter TargetName="Explanation" Property="Visibility" Value="Collapsed"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="FirstRow" TargetType="HeaderedContentControl" BasedOn="{StaticResource Row}">
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+
+        <!-- An on/off switch. -->
+        <Style x:Key="Switch" TargetType="CheckBox">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="Track" Width="40" Height="20" CornerRadius="10" BorderThickness="1"
+                                BorderBrush="{DynamicResource ControlStrongStrokeColorDefaultBrush}"
+                                Background="{DynamicResource ControlAltFillColorSecondaryBrush}">
+                            <Ellipse x:Name="Knob" Width="12" Height="12" HorizontalAlignment="Left" Margin="3,0,0,0"
+                                     Fill="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}"/>
+                                <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}"/>
+                                <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right"/>
+                                <Setter TargetName="Knob" Property="Margin" Value="0,0,3,0"/>
+                                <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Track" Property="Opacity" Value="0.88"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Track" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- A choice between two or three options, drawn as one joined control. -->
+        <Style x:Key="Segments" TargetType="Border">
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="2"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrongStrokeColorDefaultBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="Segment" TargetType="RadioButton">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Fill" Background="Transparent" CornerRadius="6" Padding="11,5">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fill" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Fill" Property="Background" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Fill" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- A key of the shortcut. -->
+        <Style x:Key="Keycap" TargetType="Border">
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="9,5"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrongStrokeColorDefaultBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}"/>
+        </Style>
+
+        <!-- The one main button: dark on light, light on dark. -->
+        <Style x:Key="Primary" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SolidBackgroundFillColorBaseBrush}"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="MinHeight" Value="32"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Fill" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fill" Property="Opacity" Value="0.88"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Fill" Property="Opacity" Value="0.76"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Fill" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- "Advanced": a quiet link that opens the rest of the settings. -->
+        <Style x:Key="Link" TargetType="ToggleButton">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="Transparent" Padding="0,6">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" FontSize="13" TextDecorations="Underline"/>
+                                <Path x:Name="Chevron" Data="M0,0 L4,4 L8,0" Width="8" Height="4" Margin="7,2,0,0" VerticalAlignment="Center"
+                                      Stroke="{DynamicResource TextFillColorSecondaryBrush}" StrokeThickness="1.3"
+                                      RenderTransformOrigin="0.5,0.5"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Chevron" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleY="-1"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="24,8,24,14" TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
-            <StackPanel>
-                <TextBlock Text="WinDictate" FontSize="20" FontWeight="Bold"/>
-                <TextBlock x:Name="SubtitleText" Text="Local push-to-talk dictation" Foreground="#666" Margin="0,0,0,16"/>
+        <!-- Name, and one line saying where things stand. -->
+        <Grid Grid.Row="0" Margin="0,2,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Border Width="24" Height="24" CornerRadius="6" Background="{DynamicResource TextFillColorPrimaryBrush}">
+                <Viewbox Width="14" Height="14">
+                    <Canvas Width="16" Height="16">
+                        <Rectangle Canvas.Left="5.5" Canvas.Top="1.5" Width="5" Height="8" RadiusX="2.5" RadiusY="2.5"
+                                   Stroke="{DynamicResource SolidBackgroundFillColorBaseBrush}" StrokeThickness="1.5"/>
+                        <Path Data="M3,7.5 A5,5 0 0 0 13,7.5 M8,12.5 V15" StrokeThickness="1.5"
+                              Stroke="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                    </Canvas>
+                </Viewbox>
+            </Border>
+            <TextBlock Grid.Column="1" Text="WinDictate" FontSize="15" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16,0,0,0">
+                <Ellipse x:Name="StatusDot" Width="8" Height="8" VerticalAlignment="Center"
+                         Fill="{DynamicResource SystemFillColorSuccessBrush}"/>
+                <TextBlock x:Name="StatusText" FontSize="12.5" Margin="8,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="310"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+            </StackPanel>
+        </Grid>
 
-                <GroupBox Header="Hotkey" Padding="10" Margin="0,0,0,12">
-                    <StackPanel>
-                        <TextBlock Text="Hold these keys together, then speak. Release to insert." Foreground="#666" Margin="0,0,0,6"/>
-                        <ComboBox x:Name="HotkeyBox" Width="220" HorizontalAlignment="Left">
+        <ScrollViewer x:Name="Scroller" Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False"
+                      Margin="0,0,-14,0" Padding="0,0,14,0">
+            <StackPanel>
+                <TextBlock Style="{StaticResource GroupLabel}" Text="DICTATION"/>
+                <HeaderedContentControl Style="{StaticResource FirstRow}" Header="Shortcut" Tag="Hold to talk, release to insert">
+                    <ItemsControl x:Name="ShortcutKeys" Focusable="False" IsTabStop="False">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource Keycap}">
+                                    <TextBlock Text="{Binding}" FontSize="12" FontFamily="Cascadia Mono, Consolas"/>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </HeaderedContentControl>
+                <HeaderedContentControl Style="{StaticResource Row}" Header="Indicator" Tag="How it shows it is listening">
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="IndicatorPreviewButton" Content="Preview" FontSize="12.5" Padding="10,5" Margin="0,0,10,0" VerticalAlignment="Center"
+                                ToolTip="Plays a pretend dictation. Nothing is recorded."/>
+                        <Border Style="{StaticResource Segments}">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="IndicatorPillRadio" GroupName="Indicator" Style="{StaticResource Segment}" Content="Glass pill"/>
+                                <RadioButton x:Name="IndicatorGlowRadio" GroupName="Indicator" Style="{StaticResource Segment}" Content="Edge glow"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </HeaderedContentControl>
+                <HeaderedContentControl Style="{StaticResource Row}" Header="Space after each dictation" Tag="So sentences do not run together">
+                    <CheckBox x:Name="TrailingSpaceBox" Style="{StaticResource Switch}" AutomationProperties.Name="Space after each dictation"/>
+                </HeaderedContentControl>
+
+                <TextBlock Style="{StaticResource GroupLabel}" Text="THIS PC"/>
+                <HeaderedContentControl x:Name="AutoStartRow" Style="{StaticResource FirstRow}" Header="Start with Windows" Tag="Ready as soon as you sign in">
+                    <CheckBox x:Name="AutoStartBox" Style="{StaticResource Switch}" AutomationProperties.Name="Start with Windows"/>
+                </HeaderedContentControl>
+                <HeaderedContentControl x:Name="MicRow" Style="{StaticResource Row}" Header="Microphone" Tag="System default">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Width="64" Height="4" CornerRadius="2" VerticalAlignment="Center" Margin="0,0,10,0"
+                                Background="{DynamicResource ControlStrongStrokeColorDefaultBrush}">
+                            <Border x:Name="MicLevelBar" Width="0" HorizontalAlignment="Left" CornerRadius="2"
+                                    Background="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        </Border>
+                        <Button x:Name="MicTestButton" Content="Test" FontSize="12.5" Padding="12,5" MinWidth="56"
+                                ToolTip="Listens for a few seconds. Nothing is kept."/>
+                    </StackPanel>
+                </HeaderedContentControl>
+                <HeaderedContentControl x:Name="QualityRow" Style="{StaticResource Row}" Header="Speech quality" Tag="Balanced suits most laptops">
+                    <Border Style="{StaticResource Segments}">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="QualityFast" GroupName="Quality" Style="{StaticResource Segment}" Content="Fast"/>
+                            <RadioButton x:Name="QualityBalanced" GroupName="Quality" Style="{StaticResource Segment}" Content="Balanced"/>
+                            <RadioButton x:Name="QualityAccurate" GroupName="Quality" Style="{StaticResource Segment}" Content="Accurate"/>
+                        </StackPanel>
+                    </Border>
+                </HeaderedContentControl>
+
+                <TextBlock Style="{StaticResource GroupLabel}" Text="PRIVACY"/>
+                <HeaderedContentControl Style="{StaticResource FirstRow}" Header="Keep the text on the clipboard" Tag="Paste it again with Ctrl+V">
+                    <CheckBox x:Name="KeepClipboardBox" Style="{StaticResource Switch}" AutomationProperties.Name="Keep the text on the clipboard"/>
+                </HeaderedContentControl>
+                <HeaderedContentControl Style="{StaticResource Row}" Header="Save a history of dictations" Tag="Off: nothing is written to disk">
+                    <CheckBox x:Name="LogTranscripts" Style="{StaticResource Switch}" AutomationProperties.Name="Save a history of dictations"/>
+                </HeaderedContentControl>
+
+                <StackPanel x:Name="AdvancedPanel" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource GroupLabel}" Text="ADVANCED"/>
+                    <HeaderedContentControl Style="{StaticResource FirstRow}" Header="Shortcut keys" Tag="The keys you hold together">
+                        <ComboBox x:Name="HotkeyBox" Width="150" AutomationProperties.Name="Shortcut keys">
                             <ComboBoxItem Content="Ctrl+Alt"/>
                             <ComboBoxItem Content="Ctrl+Shift"/>
                             <ComboBoxItem Content="Ctrl+Win"/>
                             <ComboBoxItem Content="Alt+Shift"/>
                             <ComboBoxItem Content="Win+Alt"/>
                         </ComboBox>
-                        <TextBlock Text="Ignore holds shorter than this (ms), so accidental taps do nothing:" Foreground="#666" Margin="0,10,0,2"/>
-                        <TextBox x:Name="MinHoldBox" Width="100" HorizontalAlignment="Left"/>
+                    </HeaderedContentControl>
+                    <HeaderedContentControl Style="{StaticResource Row}" Header="Ignore quick taps" Tag="Holds shorter than this many milliseconds do nothing">
+                        <TextBox x:Name="MinHoldBox" Width="80" AutomationProperties.Name="Ignore holds shorter than, in milliseconds"/>
+                    </HeaderedContentControl>
+                    <HeaderedContentControl Style="{StaticResource Row}" Header="Insert text by" Tag="Typing never uses the clipboard, but is slower">
+                        <Border Style="{StaticResource Segments}">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="PasteRadio" GroupName="Insert" Style="{StaticResource Segment}" Content="Pasting"/>
+                                <RadioButton x:Name="TypeRadio" GroupName="Insert" Style="{StaticResource Segment}" Content="Typing"/>
+                            </StackPanel>
+                        </Border>
+                    </HeaderedContentControl>
+                    <HeaderedContentControl Style="{StaticResource Row}" Header="Microphone to use" Tag="System default follows Windows, for example when a headset is plugged in">
+                        <ComboBox x:Name="MicBox" Width="236" AutomationProperties.Name="Microphone to use"/>
+                    </HeaderedContentControl>
+                    <HeaderedContentControl x:Name="ModelRow" Style="{StaticResource Row}" Header="Speech model" Tag="">
+                        <ComboBox x:Name="ModelBox" Width="236" AutomationProperties.Name="Speech model"/>
+                    </HeaderedContentControl>
+                    <HeaderedContentControl Style="{StaticResource Row}" Header="Custom words" Tag="Names and acronyms to listen for, separated by commas"/>
+                    <TextBox x:Name="VocabBox" TextWrapping="Wrap" Margin="0,0,0,12" AutomationProperties.Name="Custom words"/>
+                    <HeaderedContentControl Style="{StaticResource Row}" Header="AI cleanup" Tag="Off: nothing leaves this PC. On: each dictation is sent to the service below to tidy its punctuation">
+                        <CheckBox x:Name="CleanupEnabled" Style="{StaticResource Switch}" AutomationProperties.Name="AI cleanup"/>
+                    </HeaderedContentControl>
+                    <StackPanel x:Name="CleanupFields" Margin="0,0,0,4">
+                        <TextBlock Style="{StaticResource FieldLabel}" Margin="0,0,0,4" Text="Service address (OpenAI-compatible, for example an internal gateway)"/>
+                        <TextBox x:Name="CleanupUrl" AutomationProperties.Name="Cleanup service address"/>
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="Model"/>
+                        <TextBox x:Name="CleanupModel" AutomationProperties.Name="Cleanup model"/>
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="API key (kept in settings.json on this PC; leave empty if the gateway needs none)"/>
+                        <PasswordBox x:Name="CleanupKey" AutomationProperties.Name="Cleanup API key"/>
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="If the service fails or is slow, the text is inserted as it was heard."/>
                     </StackPanel>
-                </GroupBox>
-
-                <GroupBox Header="Speech model (runs locally)" Padding="10" Margin="0,0,0,12">
-                    <StackPanel>
-                        <ComboBox x:Name="ModelBox" Width="300" HorizontalAlignment="Left">
-                            <ComboBoxItem Content="tiny.en (fastest, lowest accuracy, ~75 MB)"/>
-                            <ComboBoxItem Content="base.en (fast, ~142 MB)"/>
-                            <ComboBoxItem Content="small.en (balanced, recommended, ~466 MB)"/>
-                            <ComboBoxItem Content="medium.en (accurate, slower, ~1.5 GB)"/>
-                            <ComboBoxItem Content="large-v3-turbo (best, needs a strong PC, ~1.6 GB)"/>
-                        </ComboBox>
-                        <TextBlock Text="Model downloads once on first use, then works fully offline." Foreground="#666" Margin="0,6,0,0"/>
-                        <TextBlock x:Name="ModelStatusText" Text="" Foreground="#0A7" Margin="0,4,0,0"/>
-                    </StackPanel>
-                </GroupBox>
-
-                <GroupBox Header="Microphone" Padding="10" Margin="0,0,0,12">
-                    <ComboBox x:Name="MicBox" Width="320" HorizontalAlignment="Left"/>
-                </GroupBox>
-
-                <GroupBox Header="Text insertion" Padding="10" Margin="0,0,0,12">
-                    <StackPanel>
-                        <RadioButton x:Name="PasteRadio" Content="Paste (clipboard, fast)" Margin="0,2"/>
-                        <RadioButton x:Name="TypeRadio" Content="Type (simulated keystrokes)" Margin="0,2"/>
-                        <CheckBox x:Name="KeepClipboardBox" Content="Keep transcript on the clipboard afterwards" Margin="0,10,0,0"/>
-                        <TextBlock Text="Paste the dictation again anywhere with Ctrl+V — even if the cursor was not in a text box. When off, paste mode restores your previous clipboard and type mode never touches it."
-                                   Foreground="#666" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </GroupBox>
-
-                <GroupBox Header="Custom words / acronyms (optional)" Padding="10" Margin="0,0,0,12">
-                    <StackPanel>
-                        <TextBlock Text="Comma-separated terms to bias recognition, e.g. HSBC, KYC, Onboarding:" Foreground="#666" Margin="0,0,0,4"/>
-                        <TextBox x:Name="VocabBox" Height="44" TextWrapping="Wrap" AcceptsReturn="True"/>
-                    </StackPanel>
-                </GroupBox>
-
-                <GroupBox Header="AI cleanup (optional, can stay off)" Padding="10" Margin="0,0,0,12">
-                    <StackPanel>
-                        <CheckBox x:Name="CleanupEnabled" Content="Clean up punctuation and filler words via an AI endpoint"/>
-                        <TextBlock Text="Endpoint base URL (OpenAI-compatible, e.g. an internal gateway):" Foreground="#666" Margin="0,8,0,2"/>
-                        <TextBox x:Name="CleanupUrl"/>
-                        <TextBlock Text="Model:" Foreground="#666" Margin="0,8,0,2"/>
-                        <TextBox x:Name="CleanupModel"/>
-                        <TextBlock Text="API key (stored locally in settings.json; leave blank for keyless gateways):" Foreground="#666" Margin="0,8,0,2"/>
-                        <PasswordBox x:Name="CleanupKey"/>
-                        <TextBlock Text="If cleanup fails or times out, the raw local transcript is used instead." Foreground="#666" Margin="0,8,0,0" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </GroupBox>
-
-                <GroupBox Header="Privacy" Padding="10" Margin="0,0,0,4">
-                    <StackPanel>
-                        <CheckBox x:Name="LogTranscripts" Content="Save transcript history locally (off by default)"/>
-                        <TextBlock Text="When off, no audio or transcript text is ever written to disk." Foreground="#666" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </GroupBox>
+                    <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" Padding="0,11,0,0" Margin="0,8,0,0">
+                        <Grid>
+                            <TextBlock x:Name="VersionText" FontSize="12.5" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                            <Button x:Name="OpenDataButton" Content="Open data folder" FontSize="12.5" Padding="10,5" HorizontalAlignment="Right"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
-            <Button x:Name="OpenDataButton" Content="Open data folder" Width="130" Height="32" Margin="0,0,8,0"/>
-            <Button x:Name="SaveButton" Content="Save" Width="90" Height="32" Margin="0,0,8,0" IsDefault="True"/>
-            <Button x:Name="CloseButton" Content="Close" Width="90" Height="32"/>
-        </StackPanel>
+        <Border Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" Padding="0,10,0,0" Margin="0,6,0,0">
+            <Grid>
+                <ToggleButton x:Name="AdvancedToggle" Style="{StaticResource Link}" Content="Advanced" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="CloseButton" Content="Cancel" MinWidth="84" MinHeight="32" IsCancel="True"/>
+                    <Button x:Name="SaveButton" Content="Save" Style="{StaticResource Primary}" MinWidth="84" Margin="8,0,0,0" IsDefault="True"/>
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </Window>

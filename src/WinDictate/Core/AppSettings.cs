@@ -13,15 +13,35 @@ public sealed class AppSettings
     public string VocabularyHint { get; set; } = "";
     public string InsertMode { get; set; } = "paste"; // "paste" or "type"
     public bool KeepInClipboard { get; set; } = true; // leave transcript on the clipboard for manual re-paste
+    public bool AddTrailingSpace { get; set; } = true; // so the next dictation does not run into this one
+    // How the app shows it is listening: "pill" (a small glass capsule above the
+    // taskbar) or "glow" (the taskbar edge lights up, no shape).
+    public string Indicator { get; set; } = "pill";
     public int ClipboardRestoreDelayMs { get; set; } = 300;
     public int MicDeviceIndex { get; set; } = -1; // -1 = system default
+    // Product name of the chosen microphone, resolved to its current index when
+    // recording starts (indexes shift after docking). "" = system default, or a
+    // settings file from before names were stored (MicDeviceIndex is used as-is).
+    public string MicDeviceName { get; set; } = "";
     public int Threads { get; set; } = 0; // 0 = auto
+    // Per-buffer level that always counts as voice; quieter buffers still count
+    // when well above the clip's own background (see SpeechGate). Same name and
+    // default as before, so existing settings.json files keep their value.
     public double SilenceThreshold { get; set; } = 0.004;
+    public int MinVoicedMs { get; set; } = 120; // reject a clip only if it has less voiced audio than this
     public bool LogTranscripts { get; set; } = false;
     public CleanupSettings Cleanup { get; set; } = new();
 
     public static string DataDir =>
+        DataDirOverride ??
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WinDictate");
+
+    /// <summary>
+    /// Redirects <see cref="DataDir"/> (settings, log, models). Set only by the unit
+    /// tests, so a test run never writes to the user's profile. Not configurable
+    /// from outside the assembly.
+    /// </summary>
+    internal static string? DataDirOverride { get; set; }
 
     public static string SettingsPath => Path.Combine(DataDir, "settings.json");
 
@@ -44,8 +64,7 @@ public sealed class AppSettings
         }
         try
         {
-            var json = File.ReadAllText(SettingsPath);
-            return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+            return Parse(File.ReadAllText(SettingsPath));
         }
         catch (Exception ex)
         {
@@ -62,13 +81,23 @@ public sealed class AppSettings
         try
         {
             Directory.CreateDirectory(DataDir);
-            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, JsonOptions));
+            File.WriteAllText(SettingsPath, Serialize(settings));
         }
         catch (Exception ex)
         {
             Logger.Error("Failed to save settings", ex);
         }
     }
+
+    /// <summary>Reads settings JSON. Properties missing from older files keep their defaults.</summary>
+    internal static AppSettings Parse(string json) =>
+        JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+
+    internal static string Serialize(AppSettings settings) =>
+        JsonSerializer.Serialize(settings, JsonOptions);
+
+    /// <summary>Deep copy, so worker threads use a snapshot that the Settings window never edits in place.</summary>
+    public AppSettings Clone() => Parse(Serialize(this));
 }
 
 public sealed class CleanupSettings
