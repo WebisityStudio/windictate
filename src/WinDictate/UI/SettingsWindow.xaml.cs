@@ -105,7 +105,7 @@ public partial class SettingsWindow : Window
         _autoStartWas = AutoStart.Read();
         AutoStartBox.IsChecked = _autoStartWas == AutoStart.State.On;
         AutoStartRow.Tag = _autoStartWas == AutoStart.State.OffInWindows
-            ? "Switched off in Windows' Startup apps. Turn it on here to allow it again"
+            ? "Switched off in Windows' Startup apps" // switching it on here allows it again
             : "Ready as soon as you sign in";
     }
 
