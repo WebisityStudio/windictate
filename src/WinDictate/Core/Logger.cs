@@ -3,8 +3,11 @@ using System.IO;
 namespace WinDictate.Core;
 
 /// <summary>
-/// Minimal event log. Never logs transcript contents or clipboard data unless
-/// the user explicitly enables LogTranscripts in settings.
+/// Minimal event log (windictate.log in the data folder, rotated at 1 MB with
+/// one older copy kept). It records operational events only: versions, model
+/// checks, microphone and hotkey problems, durations, word counts and error
+/// types. It never records audio, transcripts, clipboard contents, text sent
+/// to other applications, or window titles.
 /// </summary>
 public static class Logger
 {
@@ -12,8 +15,7 @@ public static class Logger
 
     public static string LogPath => Path.Combine(AppSettings.DataDir, "windictate.log");
 
-    public static string AppVersion =>
-        typeof(Logger).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+    public static string AppVersion => BuildInfo.Version;
 
     public static void Init()
     {
@@ -28,7 +30,9 @@ public static class Logger
             }
         }
         catch { }
-        Info("WinDictate " + AppVersion + " starting");
+        string build = BuildInfo.IsReleaseBuild ? "commit " + BuildInfo.ShortCommit : "developer build";
+        Info($"{BuildInfo.Product} {AppVersion} ({build}) starting on {Environment.OSVersion.VersionString}, " +
+             $"{Environment.ProcessorCount} logical processors");
     }
 
     public static void Info(string message) => WriteLine("INFO ", message);

@@ -13,7 +13,7 @@ internal sealed class WindowsTextTarget : ITextTarget
 {
     public Task<bool> SetClipboardTextAsync(string text) => ClipboardAccess.TrySetTextAsync(text);
 
-    public Task<(bool Ok, string? Text)> GetClipboardTextAsync() => ClipboardAccess.TryGetTextAsync();
+    public Task<ClipboardSnapshot> ReadClipboardAsync() => ClipboardAccess.TryReadAsync();
 
     public Task<bool> ClearClipboardAsync() => ClipboardAccess.TryClearAsync();
 

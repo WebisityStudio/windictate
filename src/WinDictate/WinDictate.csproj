@@ -10,9 +10,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>WinDictate</AssemblyName>
     <RootNamespace>WinDictate</RootNamespace>
-    <Version>0.1.3</Version>
-    <Product>WinDictate</Product>
-    <Description>Local push-to-talk dictation for Windows</Description>
+    <Version>0.2.0</Version>
+    <Product>WinDictate Restricted Pilot</Product>
+    <Description>Local push-to-talk dictation for Windows (restricted pilot build: local speech recognition only)</Description>
+    <Authors>Konrad Major</Authors>
+    <Copyright>Copyright (c) 2026 Konrad Major. MIT License.</Copyright>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
@@ -21,9 +23,28 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="NAudio" Version="2.2.1" />
+    <!-- Microphone capture (waveIn) only: the NAudio meta-package would also bring
+         ASIO, MIDI, WASAPI and WinForms parts this app does not use. -->
+    <PackageReference Include="NAudio.WinMM" Version="2.2.1" />
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+  </ItemGroup>
+
+  <!--
+    Build information shown in About. The release script passes the commit
+    (SourceRevisionId, which the SDK also appends to the informational version)
+    and the build time (BuildDateUtc); a developer build shows neither.
+  -->
+  <ItemGroup>
+    <AssemblyMetadata Include="BuildDateUtc" Value="$(BuildDateUtc)" Condition="'$(BuildDateUtc)' != ''" />
+    <AssemblyMetadata Include="SourceCommit" Value="$(SourceRevisionId)" Condition="'$(SourceRevisionId)' != ''" />
+    <AssemblyMetadata Include="Edition" Value="Restricted Pilot" />
+  </ItemGroup>
+
+  <!-- The licence texts travel with the program, so About can show them without a network. -->
+  <ItemGroup>
+    <None Include="..\..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\pilot\compliance\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('..\..\pilot\compliance\THIRD-PARTY-NOTICES.txt')" />
   </ItemGroup>
 
 </Project>

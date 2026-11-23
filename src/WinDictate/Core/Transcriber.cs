@@ -1,5 +1,4 @@
 using System.IO;
-using System.Net.Http;
 using System.Text;
 using Whisper.net;
 
@@ -7,49 +6,45 @@ namespace WinDictate.Core;
 
 /// <summary>
 /// Local speech-to-text via whisper.cpp (Whisper.net bindings). Runs entirely
-/// on-device. Models are GGML files downloaded once into %APPDATA%\WinDictate\models,
-/// or dropped there manually on machines without internet access.
+/// on this PC. Uses only the fixed model that ships with the program
+/// (<see cref="PilotModel"/>): it never downloads anything, and a model file
+/// whose checksum does not match is not loaded.
 /// </summary>
 public sealed class Transcriber : ISpeechToText
 {
-    public static string ModelsDir => Path.Combine(AppSettings.DataDir, "models");
-    public static string ModelPath(string model) => Path.Combine(ModelsDir, $"ggml-{model}.bin");
-
-    // Infinite timeout on the client itself; we enforce a per-read inactivity
-    // window inside the download loop so a mid-transfer TCP stall does not hang forever.
-    private static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };
-
+    private readonly string _modelPath;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private WhisperFactory? _factory;
-    private string? _loadedPath;
+
+    public Transcriber(string? modelPath = null)
+    {
+        _modelPath = modelPath ?? PilotModel.DefaultPath;
+    }
 
     public bool IsReady => _factory != null;
 
     /// <summary>
-    /// Downloads (once) and loads the model. Never does the slow work on the
-    /// caller's thread: every await leaves the caller's context, and the model
-    /// load itself (WhisperFactory.FromPath reads and initialises the whole model
-    /// synchronously) runs on the thread pool. Callers on the UI thread still
-    /// should not wait for it.
+    /// Checks and loads the model, once. Never does the slow work on the
+    /// caller's thread: the checksum and the model load (WhisperFactory.FromPath
+    /// reads and initialises the whole model synchronously) run on the thread pool.
     /// </summary>
-    public async Task EnsureReadyAsync(string model, IProgress<string>? status, CancellationToken ct = default)
+    /// <exception cref="ModelUnavailableException">The model file is missing, damaged or not the approved file.</exception>
+    public async Task EnsureReadyAsync(IProgress<string>? status, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var path = ModelPath(model);
-            if (!File.Exists(path))
-                await DownloadModelAsync(model, path, status, ct).ConfigureAwait(false);
+            if (_factory != null) return;
 
-            if (_factory == null || _loadedPath != path)
+            status?.Report("Loading speech model…");
+            ModelCheck check = await Task.Run(() => PilotModel.Verify(_modelPath), ct).ConfigureAwait(false);
+            if (check != ModelCheck.Ok)
             {
-                status?.Report("Loading speech model…");
-                _factory?.Dispose();
-                _factory = null;
-                _factory = await Task.Run(() => WhisperFactory.FromPath(path), ct).ConfigureAwait(false);
-                _loadedPath = path;
-                Logger.Info($"Loaded model {model} ({new FileInfo(path).Length / 1024 / 1024} MB)");
+                Logger.Error($"Speech model check failed: {check}");
+                throw new ModelUnavailableException(check);
             }
+            _factory = await Task.Run(() => WhisperFactory.FromPath(_modelPath), ct).ConfigureAwait(false);
+            Logger.Info($"Loaded model {PilotModel.FileName} (SHA-256 {PilotModel.ShortHash}…, verified)");
         }
         finally
         {
@@ -57,73 +52,16 @@ public sealed class Transcriber : ISpeechToText
         }
     }
 
-    private static async Task DownloadModelAsync(string model, string path, IProgress<string>? status, CancellationToken ct)
-    {
-        Directory.CreateDirectory(ModelsDir);
-        var url = $"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{model}.bin";
-        Logger.Info($"Downloading model {model} from {url}");
-        status?.Report($"Downloading {model} model…");
-
-        using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        long total = response.Content.Headers.ContentLength ?? -1;
-
-        var tmp = path + ".part";
-        await using (var source = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false))
-        await using (var target = File.Create(tmp))
-        {
-            var buffer = new byte[1 << 16];
-            long done = 0;
-            long lastPercent = -1;
-            while (true)
-            {
-                // 30-second inactivity window per read: a VPN drop or proxy
-                // black-hole mid-download would otherwise stall source.ReadAsync
-                // forever and permanently hold the gate (bug: stuck _busy).
-                using var readCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                readCts.CancelAfter(TimeSpan.FromSeconds(30));
-                int read;
-                try
-                {
-                    read = await source.ReadAsync(buffer, readCts.Token).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-                {
-                    throw new IOException($"Model download stalled (no data for 30 s). Check your network connection and retry.");
-                }
-                if (read == 0) break;
-                await target.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
-                done += read;
-                if (total > 0)
-                {
-                    long percent = done * 100 / total;
-                    if (percent != lastPercent)
-                    {
-                        lastPercent = percent;
-                        status?.Report($"Downloading {model} model… {percent}%");
-                    }
-                }
-            }
-        }
-        File.Move(tmp, path, true);
-        Logger.Info($"Model {model} downloaded");
-    }
-
     public async Task<string> TranscribeAsync(Stream wav, AppSettings settings, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            // Check inside the gate: EnsureReadyAsync sets _factory=null before
-            // loading a new model, so a mid-swap check outside the gate can race.
-            // It must also sit inside the try, or this throw would skip the
-            // Release below and leave every later call waiting forever.
+            // Check inside the gate and inside the try, so this throw still
+            // releases the gate (otherwise every later call would wait forever).
             if (_factory == null) throw new InvalidOperationException("Speech model is not loaded yet");
 
-            var builder = _factory.CreateBuilder();
-            builder = settings.Language.Equals("auto", StringComparison.OrdinalIgnoreCase)
-                ? builder.WithLanguageDetection()
-                : builder.WithLanguage(string.IsNullOrWhiteSpace(settings.Language) ? "en" : settings.Language);
+            var builder = _factory.CreateBuilder().WithLanguage(PilotModel.Language);
 
             int threads = settings.Threads > 0 ? settings.Threads : Math.Min(8, Environment.ProcessorCount);
             builder = builder.WithThreads(threads);

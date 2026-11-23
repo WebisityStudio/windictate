@@ -47,6 +47,10 @@
                             HorizontalAlignment="Center" VerticalAlignment="Center">
                     <Ellipse x:Name="RecDot" Width="7" Height="7" Margin="0,0,8,0" VerticalAlignment="Center"/>
                     <StackPanel x:Name="Bars" Orientation="Horizontal" Height="18" VerticalAlignment="Center"/>
+                    <!-- Where the text will go ("Outlook"), so a wrong window is noticed before letting go. -->
+                    <TextBlock x:Name="TargetText" FontSize="12.5" FontWeight="Medium" Margin="10,0,0,0"
+                               MaxWidth="170" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                               Visibility="Collapsed"/>
                 </StackPanel>
 
                 <!-- Working: three dots, filled in from code. -->

@@ -1,0 +1,17 @@
+{
+  "name": "small.en",
+  "description": "OpenAI Whisper small (English-only), converted to the whisper.cpp GGML format by the whisper.cpp project",
+  "fileName": "ggml-small.en.bin",
+  "sizeBytes": 487614201,
+  "sha256": "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d",
+  "source": {
+    "repository": "https://huggingface.co/ggerganov/whisper.cpp",
+    "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+    "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small.en.bin"
+  },
+  "licence": {
+    "spdx": "MIT",
+    "weights": "OpenAI Whisper model weights, released under the MIT License (https://github.com/openai/whisper)",
+    "conversion": "GGML conversion published by the whisper.cpp project under the MIT License (https://github.com/ggml-org/whisper.cpp)"
+  }
+}

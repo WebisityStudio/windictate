@@ -1,0 +1,33 @@
+<Window x:Class="WinDictate.UI.PilotNoticeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WinDictate Restricted Pilot" Width="480" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        ThemeMode="System" UseLayoutRounding="True" ShowInTaskbar="True">
+    <!-- The pilot-use notice. First launch: dictation stays off until it is acknowledged. -->
+    <Grid Margin="28,20,28,20" TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Before you start" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12"/>
+
+        <Border Grid.Row="1" CornerRadius="8" Padding="16,14" BorderThickness="1"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+            <TextBlock x:Name="NoticeText" TextWrapping="Wrap" FontSize="14" LineHeight="21"/>
+        </Border>
+
+        <TextBlock Grid.Row="2" x:Name="HowToText" TextWrapping="Wrap" FontSize="12.5" Margin="0,14,0,0"
+                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button x:Name="ExitButton" Content="Exit WinDictate" MinWidth="110" MinHeight="32" Margin="0,0,8,0" IsCancel="True"/>
+            <Button x:Name="AcceptButton" Content="I understand" MinWidth="110" MinHeight="32" IsDefault="True"
+                    Style="{DynamicResource AccentButtonStyle}"/>
+        </StackPanel>
+    </Grid>
+</Window>

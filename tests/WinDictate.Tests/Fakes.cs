@@ -32,6 +32,10 @@ internal sealed class FakeRecorder : IAudioCapture
 {
     public event Action<float>? LevelChanged;
     public event Action? CaptureStarted;
+    public event Action? CaptureLost;
+
+    /// <summary>The device is unplugged mid-recording.</summary>
+    public void Disconnect() => CaptureLost?.Invoke();
 
     public FakeRecorder(string utterance, bool voiced)
     {
@@ -121,8 +125,9 @@ internal sealed class FakeSpeech : ISpeechToText
     public readonly HashSet<string> Failing = new();
 
     public volatile bool Ready = true;   // a model is loaded
-    public volatile bool FailEnsure;     // loading/downloading the requested model fails (offline)
-    public readonly ConcurrentQueue<string> EnsureCalls = new();
+    public volatile bool FailEnsure;     // the model file fails its checksum
+    private int _ensureCalls;
+    public int EnsureCalls => Volatile.Read(ref _ensureCalls);
 
     public bool IsReady => Ready;
 
@@ -133,10 +138,10 @@ internal sealed class FakeSpeech : ISpeechToText
         return gate;
     }
 
-    public Task EnsureReadyAsync(string model, IProgress<string>? status, CancellationToken ct = default)
+    public Task EnsureReadyAsync(IProgress<string>? status, CancellationToken ct = default)
     {
-        EnsureCalls.Enqueue(model);
-        if (FailEnsure) throw new HttpRequestException("no network");
+        Interlocked.Increment(ref _ensureCalls);
+        if (FailEnsure) throw new ModelUnavailableException(ModelCheck.WrongHash);
         Ready = true;
         return Task.CompletedTask;
     }
@@ -160,6 +165,7 @@ internal sealed class FakeTextTarget : ITextTarget
     private readonly object _lock = new();
     private readonly List<string> _delivered = new();
     private string? _clipboard;
+    private bool _otherFormats;   // the clipboard holds a picture, files or formatted text as well
     private long _sequence;
 
     public volatile bool ClipboardFails;
@@ -187,11 +193,26 @@ internal sealed class FakeTextTarget : ITextTarget
         get { lock (_lock) return _clipboard; }
     }
 
+    /// <summary>True while the clipboard holds something besides plain text.</summary>
+    public bool ClipboardHasOtherContent
+    {
+        get { lock (_lock) return _otherFormats; }
+    }
+
+    /// <summary>The user copies a picture (or files): nothing WinDictate could put back from text alone.</summary>
+    public void UserCopiesPicture() => UserCopies(null, otherFormats: true);
+
+    /// <summary>The user copies formatted text (from Word or a web page): text plus other formats.</summary>
+    public void UserCopiesFormatted(string text) => UserCopies(text, otherFormats: true);
+
     /// <summary>The user copies something themselves.</summary>
-    public void UserCopies(string text)
+    public void UserCopies(string text) => UserCopies(text, otherFormats: false);
+
+    private void UserCopies(string? text, bool otherFormats)
     {
         lock (_lock)
         {
+            _otherFormats = otherFormats;
             _clipboard = text;
             _sequence++;
         }
@@ -207,15 +228,17 @@ internal sealed class FakeTextTarget : ITextTarget
         lock (_lock)
         {
             if (ClipboardFails || RejectWrite(text)) return Task.FromResult(false);
+            _otherFormats = false;
             _clipboard = text;
             _sequence++;
             return Task.FromResult(true);
         }
     }
 
-    public Task<(bool Ok, string? Text)> GetClipboardTextAsync()
+    public Task<ClipboardSnapshot> ReadClipboardAsync()
     {
-        lock (_lock) return Task.FromResult<(bool, string?)>((!ClipboardFails, _clipboard));
+        lock (_lock)
+            return Task.FromResult(ClipboardFails ? ClipboardSnapshot.Unreadable : new ClipboardSnapshot(true, _clipboard, !_otherFormats));
     }
 
     public Task<bool> ClearClipboardAsync()
@@ -224,6 +247,7 @@ internal sealed class FakeTextTarget : ITextTarget
         {
             if (ClipboardFails) return Task.FromResult(false);
             _clipboard = null;
+            _otherFormats = false;
             _sequence++;
             return Task.FromResult(true);
         }

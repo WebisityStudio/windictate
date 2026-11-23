@@ -83,10 +83,23 @@ public partial class GlassPillWindow : Window, IDictationIndicator
         StopPulse();
         ResetTick();
         ShowLayer(ListenLayer, animate: !fresh);
-        Morph(ListenWidth, animate: !fresh);
+        Morph(ListeningWidth(TargetApp.NameOf(targetWindow)), animate: !fresh);
         StartRendering();
         Enter(fresh);
     }
+
+    /// <summary>Names the target application beside the waveform, widening the capsule to fit.</summary>
+    private double ListeningWidth(string target)
+    {
+        TargetText.Text = target;
+        TargetText.Visibility = target.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (target.Length == 0) return ListenWidth;
+        ListenLayer.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        return Math.Clamp(Math.Ceiling(ListenLayer.DesiredSize.Width) + NoticePadding, ListenWidth, MaxNoticeWidth);
+    }
+
+    /// <summary>The target name currently shown while listening ("" if none). For the Windows tests.</summary>
+    internal string TargetShown => TargetText.Visibility == Visibility.Visible ? TargetText.Text : "";
 
     public void SetLevel(float peak)
     {
@@ -334,6 +347,8 @@ public partial class GlassPillWindow : Window, IDictationIndicator
         RecDot.Fill = Frozen(_palette.Recording);
         Tick.Stroke = Frozen(_palette.Success);
         NoticeText.Foreground = ink;
+        // Slightly softer than the waveform, except in high contrast where every bit of contrast counts.
+        TargetText.Foreground = SystemParameters.HighContrast ? ink : Frozen(Color.FromArgb(0xC8, _palette.Ink.R, _palette.Ink.G, _palette.Ink.B));
         foreach (Rectangle bar in _bars) bar.Fill = ink;
         foreach (Ellipse dot in _dots) dot.Fill = ink;
     }

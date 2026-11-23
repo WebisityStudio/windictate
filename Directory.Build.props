@@ -1,0 +1,11 @@
+<Project>
+  <!--
+    Restricted pilot build: every package version is locked. `dotnet restore`
+    writes packages.lock.json next to each project; release builds restore in
+    locked mode (see pilot/build-release.ps1), which fails if any dependency
+    would resolve to anything other than what is recorded there.
+  -->
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+</Project>

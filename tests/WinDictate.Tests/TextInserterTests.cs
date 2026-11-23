@@ -11,17 +11,19 @@ namespace WinDictate.Tests;
 public sealed class TextInserterTests
 {
     private static readonly InsertionTarget Here = new(new IntPtr(42), new IntPtr(7));
-    private static readonly InsertOptions Paste = new(TypeMode: false, KeepInClipboard: true, ClipboardRestoreDelayMs: 0);
-    private static readonly InsertOptions PasteAndRestore = new(TypeMode: false, KeepInClipboard: false, ClipboardRestoreDelayMs: 0);
-    private static readonly InsertOptions TypeAndKeep = new(TypeMode: true, KeepInClipboard: true, ClipboardRestoreDelayMs: 0);
+    private static readonly InsertOptions Paste = new(TypeMode: false, ClipboardRestoreDelayMs: 0);
+    private static readonly InsertOptions PasteAndRestore = Paste;
+    private static readonly InsertOptions Type = new(TypeMode: true, ClipboardRestoreDelayMs: 0);
 
     private readonly FakeTextTarget _target = new();
     private readonly TextInserter _inserter;
     private long _now = 1_000_000;
+    private Action? _whilePasting; // runs while the inserter waits for the app to take the pasted text
 
     public TextInserterTests()
     {
-        _inserter = new TextInserter(_target, delay: _ => Task.CompletedTask, protectMs: 30_000, clock: () => _now);
+        _inserter = new TextInserter(_target, delay: _ => { _whilePasting?.Invoke(); return Task.CompletedTask; },
+            protectMs: 30_000, clearMs: 120_000, clock: () => _now);
     }
 
     /// <summary>A dictation cannot be delivered and is left on the clipboard; the user is told at once.</summary>
@@ -55,9 +57,9 @@ public sealed class TextInserterTests
 
         Assert.Equal(InsertOutcome.Inserted, result.Outcome);
         Assert.False(result.Typed);
-        Assert.True(result.OnClipboard);
+        Assert.False(result.OnClipboard);
         Assert.Equal(new[] { "paste:next " }, _target.Delivered);
-        Assert.Equal("next ", _target.Clipboard);
+        Assert.Equal("waiting ", _target.Clipboard); // the undelivered text is put back until it is cleared
     }
 
     [Fact]
@@ -70,7 +72,8 @@ public sealed class TextInserterTests
         var result = await _inserter.InsertAsync("two ", Paste, Here, startedAt: _now);
 
         Assert.False(result.Typed);
-        Assert.Equal("two ", _target.Clipboard);
+        Assert.Equal(new[] { "paste:one ", "paste:two " }, _target.Delivered);
+        Assert.Equal("waiting ", _target.Clipboard);
     }
 
     [Fact]
@@ -108,7 +111,7 @@ public sealed class TextInserterTests
         var result = await _inserter.InsertAsync("next ", Paste, Here, startedAt: _now);
 
         Assert.False(result.Typed);
-        Assert.Equal("next ", _target.Clipboard);
+        Assert.Equal("the user's own", _target.Clipboard); // put back after the paste
     }
 
     [Fact]
@@ -128,10 +131,10 @@ public sealed class TextInserterTests
     }
 
     [Fact]
-    public async Task TypeMode_WhileTextWaits_DoesNotPutItsBackupCopyOverIt()
+    public async Task TypeMode_WhileTextWaits_LeavesItAlone()
     {
         await UndeliveredAsync("waiting ");
-        var result = await _inserter.InsertAsync("next ", TypeAndKeep, Here, startedAt: _now + 1);
+        var result = await _inserter.InsertAsync("next ", Type, Here, startedAt: _now + 1);
 
         Assert.True(result.EarlierTextKept);
         Assert.False(result.OnClipboard);
@@ -146,7 +149,7 @@ public sealed class TextInserterTests
 
         Assert.Equal(InsertOutcome.CopiedOnly, result.Outcome);
         Assert.Equal(RecoveryReason.MaybePasted, result.Reason);
-        Assert.Equal("text ", _target.Clipboard); // stays, whatever the keep-on-clipboard setting says
+        Assert.Equal("text ", _target.Clipboard); // stays, so the user can check and paste it
     }
 
     [Fact]
@@ -185,6 +188,138 @@ public sealed class TextInserterTests
         refuse = false;
         await _inserter.InsertAsync("text ", PasteAndRestore, Here, startedAt: _now);
         Assert.Equal("old copy", _target.Clipboard); // not mistaken for the user's own text
+    }
+
+    [Fact]
+    public async Task Paste_PutsTheUsersTextBack()
+    {
+        _target.UserCopies("mine");
+        var result = await _inserter.InsertAsync("text ", Paste, Here, startedAt: _now);
+
+        Assert.Equal(InsertOutcome.Inserted, result.Outcome);
+        Assert.False(result.OnClipboard);
+        Assert.Equal(new[] { "paste:text " }, _target.Delivered);
+        Assert.Equal("mine", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task Paste_WithAPictureOnTheClipboard_TypesInstead_AndNeverTouchesTheClipboard()
+    {
+        _target.UserCopiesPicture();
+        long before = _target.ClipboardSequence;
+        var result = await _inserter.InsertAsync("text ", Paste, Here, startedAt: _now);
+
+        Assert.True(result.Typed);
+        Assert.True(result.TypedToSpareClipboard);
+        Assert.Equal(new[] { "type:text " }, _target.Delivered);
+        Assert.Equal(before, _target.ClipboardSequence);
+        Assert.True(_target.ClipboardHasOtherContent);
+    }
+
+    [Fact]
+    public async Task Paste_WhenTheClipboardCannotBeRead_TypesInstead()
+    {
+        _target.ClipboardFails = true;
+        var result = await _inserter.InsertAsync("text ", Paste, Here, startedAt: _now);
+        Assert.True(result.Typed);
+        Assert.Equal(new[] { "type:text " }, _target.Delivered);
+    }
+
+    [Fact]
+    public async Task Restore_LeavesAlone_WhatSomeoneElseCopiedDuringThePaste()
+    {
+        _target.UserCopies("mine");
+        _whilePasting = () => _target.UserCopies("copied meanwhile");
+        await _inserter.InsertAsync("text ", Paste, Here, startedAt: _now);
+        Assert.Equal("copied meanwhile", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task UndeliveredText_IsRemovedWhenItsTimeIsUp_AndTheUsersTextComesBack()
+    {
+        _target.UserCopies("mine");
+        await UndeliveredAsync("waiting ");
+        Assert.Equal("waiting ", _target.Clipboard);
+
+        _now += 60_000;
+        Assert.False(await _inserter.ClearExpiredRecoveryAsync()); // not yet
+        Assert.Equal("waiting ", _target.Clipboard);
+
+        _now += 61_000;
+        Assert.True(await _inserter.ClearExpiredRecoveryAsync());
+        Assert.Equal("mine", _target.Clipboard);
+        Assert.False(await _inserter.ClearExpiredRecoveryAsync()); // only once
+    }
+
+    [Fact]
+    public async Task UndeliveredText_IsRemoved_EvenWhenWhatWasThereCannotBePutBack()
+    {
+        _target.UserCopiesPicture();
+        await UndeliveredAsync("waiting ");
+        _now += 121_000;
+        Assert.True(await _inserter.ClearExpiredRecoveryAsync());
+        Assert.Null(_target.Clipboard); // cleared: the dictation does not linger
+    }
+
+    [Fact]
+    public async Task UndeliveredText_IsLeftToTheUser_OnceTheyHaveCopiedSomethingElse()
+    {
+        await UndeliveredAsync("waiting ");
+        _target.UserCopies("theirs now");
+        _now += 121_000;
+        Assert.False(await _inserter.ClearExpiredRecoveryAsync());
+        Assert.Equal("theirs now", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task UndeliveredText_SurvivesLaterPastes_UntilItIsCleared()
+    {
+        _target.UserCopies("mine");
+        await UndeliveredAsync("waiting ");
+        _now += 31_000; // protection over: later dictations are pasted again
+        await _inserter.InsertAsync("later ", Paste, Here, startedAt: _now);
+        Assert.Equal(new[] { "paste:later " }, _target.Delivered);
+        Assert.Equal("waiting ", _target.Clipboard);
+
+        _now += 121_000;
+        Assert.True(await _inserter.ClearExpiredRecoveryAsync());
+        Assert.Equal("mine", _target.Clipboard); // still recognised as ours, and the user's text returns
+    }
+
+    [Fact]
+    public async Task AFailedRestore_IsTriedAgainLater_SoTheTranscriptDoesNotLinger()
+    {
+        _target.UserCopies("mine");
+        bool refuse = true;
+        _target.RejectWrite = text => text == "mine" && refuse;
+        var result = await _inserter.InsertAsync("text ", Paste, Here, startedAt: _now);
+        Assert.True(result.ClipboardNotRestored);
+        Assert.Equal("text ", _target.Clipboard);
+
+        refuse = false;
+        _now += 121_000;
+        Assert.True(await _inserter.ClearExpiredRecoveryAsync());
+        Assert.Equal("mine", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task ClearingNow_RemovesUndeliveredTextRegardlessOfTime()
+    {
+        _target.UserCopies("mine");
+        await UndeliveredAsync("waiting ");
+        Assert.True(await _inserter.ClearRecoveryNowAsync());
+        Assert.Equal("mine", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task Offer_PutsTextOnTheClipboard_AndItIsRemovedLater()
+    {
+        _target.UserCopies("mine");
+        Assert.True(await _inserter.OfferAsync("again "));
+        Assert.Equal("again ", _target.Clipboard);
+        _now += 121_000;
+        Assert.True(await _inserter.ClearExpiredRecoveryAsync());
+        Assert.Equal("mine", _target.Clipboard);
     }
 
     [Theory]

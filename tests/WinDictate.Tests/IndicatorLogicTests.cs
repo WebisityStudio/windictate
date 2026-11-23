@@ -220,6 +220,9 @@ public class IndicatorCuesTests
     [InlineData("Partly typed · 2 dictations in clipboard — check, then Ctrl+V", "Partly typed. Check, then Ctrl+V", NoticeKind.Warning)]
     [InlineData("May have been inserted · 12 words in clipboard — check, then Ctrl+V", "Check it arrived. If not, Ctrl+V", NoticeKind.Warning)]
     [InlineData("Microphone not responding", "Microphone not responding", NoticeKind.Warning)]
+    [InlineData("Microphone disconnected", "Microphone disconnected", NoticeKind.Warning)]
+    [InlineData("Speech model problem", "Speech model problem", NoticeKind.Warning)]
+    [InlineData("Copied · last dictation in clipboard — press Ctrl+V", "Copied. Press Ctrl+V", NoticeKind.Info)]
     [InlineData("Couldn't insert or copy — please dictate again", "Couldn't insert. Dictate again", NoticeKind.Warning)]
     [InlineData("Error, see log", "Something went wrong", NoticeKind.Warning)]
     public void Problems_GetOnePlainLine(string result, string expected, NoticeKind kind)

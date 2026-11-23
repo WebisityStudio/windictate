@@ -38,8 +38,7 @@ public sealed class DictationControllerTests : IDisposable
 
     // Created on first use, so a test can adjust _settings and _timings first.
     private DictationController Controller =>
-        _controller ??= new DictationController(_settings, _overlay, _platform, _speech, _target,
-            cleanup: (text, _) => Task.FromResult(text), timings: _timings);
+        _controller ??= new DictationController(_settings, _overlay, _platform, _speech, _target, timings: _timings);
 
     public DictationControllerTests()
     {
@@ -81,14 +80,46 @@ public sealed class DictationControllerTests : IDisposable
     // ----- Bug 3: back-to-back dictations -----
 
     [Fact]
-    public async Task Dictation_IsPasted_WithTrailingSpace_AndKeptOnClipboard()
+    public async Task Dictation_IsPasted_WithTrailingSpace_AndNotLeftOnTheClipboard()
     {
+        _target.UserCopies("my own text");
         await DictateAsync("A");
         await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
 
         Assert.Equal(new[] { "paste:Text A. " }, _target.Delivered);
-        Assert.Equal("Text A. ", _target.Clipboard);
-        await WaitFor(() => OverlayShowed("flash:Inserted 2 words · in clipboard"), "the result");
+        await WaitFor(() => OverlayShowed("flash:Inserted 2 words"), "the result");
+        Assert.Equal("my own text", _target.Clipboard); // the user's clipboard is put back
+    }
+
+    [Fact]
+    public async Task EmptyClipboard_IsEmptyAgainAfterThePaste()
+    {
+        await DictateAsync("A");
+        await WaitFor(() => OverlayShowed("flash:Inserted 2 words"), "the result");
+        Assert.Equal(new[] { "paste:Text A. " }, _target.Delivered);
+        Assert.Null(_target.Clipboard);
+    }
+
+    [Fact]
+    public async Task PictureOnTheClipboard_IsLeftAlone_AndTheTextIsTypedInstead()
+    {
+        _target.UserCopiesPicture();
+        await DictateAsync("A");
+        await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
+        Assert.Equal(new[] { "type:Text A. " }, _target.Delivered);
+        Assert.True(_target.ClipboardHasOtherContent, "the picture must still be on the clipboard");
+        await WaitFor(() => OverlayShowed("flash:Inserted 2 words"), "the result");
+    }
+
+    [Fact]
+    public async Task FormattedTextOnTheClipboard_IsLeftAlone_AndTheTextIsTypedInstead()
+    {
+        _target.UserCopiesFormatted("a table from Word");
+        await DictateAsync("A");
+        await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
+        Assert.Equal(new[] { "type:Text A. " }, _target.Delivered);
+        Assert.Equal("a table from Word", _target.Clipboard);
+        Assert.True(_target.ClipboardHasOtherContent, "the formatting must survive too");
     }
 
     [Fact]
@@ -155,7 +186,6 @@ public sealed class DictationControllerTests : IDisposable
     [Fact]
     public async Task KeyPressedJustBeforeSending_WaitsAndRetries_AndRestoresTheUsersClipboard()
     {
-        _settings.KeepInClipboard = false;
         _target.UserCopies("my own text");
         int checks = 0;
         _target.KeysHeld = () => Interlocked.Increment(ref checks) <= 3; // a key goes down right at the last moment
@@ -167,9 +197,8 @@ public sealed class DictationControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task ModifiersHeldTooLong_TextStaysOnClipboard_EvenWithKeepInClipboardOff()
+    public async Task ModifiersHeldTooLong_TextStaysOnClipboard_ForTheUserToPaste()
     {
-        _settings.KeepInClipboard = false;
         _target.UserCopies("my own text");
         _platform.ModifiersHeld = true;
 
@@ -236,7 +265,8 @@ public sealed class DictationControllerTests : IDisposable
         _target.UserCopies("something else");
         await DictateAsync("B");
         await WaitFor(() => _target.Delivered.Length == 1, "B's insertion");
-        Assert.Equal("Text B. ", _target.Clipboard); // normal keep-on-clipboard behaviour again
+        Assert.Equal(new[] { "paste:Text B. " }, _target.Delivered); // pasted as usual again...
+        await WaitFor(() => _target.Clipboard == "something else", "the user's clipboard back"); // ...and put back
     }
 
     [Fact]
@@ -251,9 +281,9 @@ public sealed class DictationControllerTests : IDisposable
         await Task.Delay(400); // longer than the protection
         await DictateAsync("B");
         await WaitFor(() => _target.Delivered.Length == 1, "B's insertion");
-        // Pasted as usual again, with its own copy on the clipboard.
+        // Pasted as usual again; the undelivered A is put back on the clipboard afterwards.
         Assert.Equal(new[] { "paste:Text B. " }, _target.Delivered);
-        Assert.Equal("Text B. ", _target.Clipboard);
+        await WaitFor(() => _target.Clipboard == "Text A. ", "A back on the clipboard");
     }
 
     [Fact]
@@ -442,24 +472,17 @@ public sealed class DictationControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task TypeMode_TypesTheText_AndKeepsABackupCopy()
+    public async Task TypeMode_TypesTheText_AndNeverTouchesTheClipboard()
     {
         _settings.InsertMode = "type";
+        _target.UserCopies("my own text");
+        long before = _target.ClipboardSequence;
         await DictateAsync("A");
         await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
         Assert.Equal(new[] { "type:Text A. " }, _target.Delivered);
-        await WaitFor(() => _target.Clipboard == "Text A. ", "the backup copy");
-    }
-
-    [Fact]
-    public async Task KeepInClipboardOff_RestoresTheUsersClipboard()
-    {
-        _settings.KeepInClipboard = false;
-        _target.UserCopies("my own text");
-        await DictateAsync("A");
-        await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
-        Assert.Equal(new[] { "paste:Text A. " }, _target.Delivered);
-        await WaitFor(() => _target.Clipboard == "my own text", "the clipboard restore");
+        await Settle();
+        Assert.Equal(before, _target.ClipboardSequence); // not even briefly replaced
+        Assert.Equal("my own text", _target.Clipboard);
     }
 
     // ----- Bug 10: "Listening…" only once the microphone is really capturing -----
@@ -527,8 +550,7 @@ public sealed class DictationControllerTests : IDisposable
         var recorder = _platform.Expect("A");
         recorder.StartCapturingImmediately = false;
         var timings = Fast with { OverlayDelayMs = 5000 }; // the tap must end long before this
-        _controller = new DictationController(_settings, _overlay, _platform, _speech, _target,
-            cleanup: (text, _) => Task.FromResult(text), timings: timings);
+        _controller = new DictationController(_settings, _overlay, _platform, _speech, _target, timings: timings);
         Controller.OnSessionStarted(1);
         await WaitFor(() => recorder.Started, "the device to open");
         recorder.BeginCapture();
@@ -577,16 +599,25 @@ public sealed class DictationControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task ModelThatCannotLoad_DictationKeepsUsingTheLoadedModel()
+    public async Task ModelFailingItsCheck_IsReportedOnce_AndNothingIsInserted()
     {
-        _speech.FailEnsure = true;        // e.g. offline, new model not downloaded
-        Controller.UpdateSettings(new AppSettings { MinHoldMs = 0, Model = "base.en" });
-        await WaitFor(() => _speech.EnsureCalls.Count == 1, "the background model load");
+        _speech.Ready = false;
+        _speech.FailEnsure = true; // the model file is not the approved one
+        var problems = new List<(ModelCheck Check, string Message)>();
+        Controller.ModelUnavailable += (check, message) => { lock (problems) problems.Add((check, message)); };
+        Controller.Start(); // the warm-up checks the model
 
-        await DictateAsync("A");
-        await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
-        Assert.Equal(new[] { "paste:Text A. " }, _target.Delivered);
-        Assert.Single(_speech.EnsureCalls); // the dictation itself did not try (and fail) to download
+        await DictateAsync("A"); // and so does the first dictation
+        await WaitFor(() => OverlayShowed("notice:Speech model problem"), "the notice");
+        await Settle();
+        Assert.Empty(_target.Delivered);
+        Assert.Empty(_speech.Transcribed);
+        lock (problems)
+        {
+            var only = Assert.Single(problems);
+            Assert.Equal(ModelCheck.WrongHash, only.Check);
+            Assert.Contains("checksum", only.Message);
+        }
     }
 
     [Fact]
@@ -595,7 +626,7 @@ public sealed class DictationControllerTests : IDisposable
         _speech.Ready = false;
         await DictateAsync("A");
         await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
-        Assert.Single(_speech.EnsureCalls);
+        Assert.Equal(1, _speech.EnsureCalls);
     }
 
     [Fact]
@@ -661,7 +692,6 @@ public sealed class DictationControllerTests : IDisposable
     [Fact]
     public async Task ClipboardRestoreFailure_IsReported()
     {
-        _settings.KeepInClipboard = false;
         _target.UserCopies("my own text");
         _target.RejectWrite = text => text == "my own text";
         await DictateAsync("A");
@@ -671,7 +701,6 @@ public sealed class DictationControllerTests : IDisposable
     [Fact]
     public async Task KeyPressedJustBeforeSending_UsersClipboardSurvivesAFailedRestore()
     {
-        _settings.KeepInClipboard = false;
         _target.UserCopies("my own text");
         int sends = 0;
         _target.KeysHeld = () => Interlocked.Increment(ref sends) == 1; // first paste attempt refused
@@ -682,5 +711,149 @@ public sealed class DictationControllerTests : IDisposable
         await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
         // The retry must not mistake the transcript for the user's own clipboard text.
         await WaitFor(() => _target.Clipboard == "my own text", "the user's clipboard back");
+    }
+
+    // ----- Restricted pilot: microphone loss, memory-only audio, nothing left behind -----
+
+    /// <summary>Wires the controller's stop requests the way the app wires them to the hotkey monitor.</summary>
+    private void StopRequestsEndTheSession() =>
+        Controller.SessionStopRequested += id => Controller.OnSessionEnded(id, SessionEndReason.Stopped);
+
+    [Fact]
+    public async Task MicrophoneUnplugged_EndsTheDictationAtOnce_AndDiscardsItsAudio()
+    {
+        StopRequestsEndTheSession();
+        var recorder = _platform.Expect("A");
+        Controller.OnSessionStarted(++_lastId);
+        await WaitFor(() => recorder.Started, "the microphone");
+        await WaitFor(() => OverlayShowed("listening"), "the indicator");
+
+        recorder.Disconnect(); // the headset is unplugged mid-sentence, hotkey still held
+        await WaitFor(() => OverlayShowed("flash:Microphone disconnected"), "the notice");
+        await WaitFor(() => recorder.Stopped && recorder.Disposed, "the device to be closed");
+        await Settle();
+        Assert.Empty(_speech.Transcribed);   // half a sentence is not inserted anywhere
+        Assert.Empty(_target.Delivered);
+        Assert.All(recorder.Result.WavBytes, b => Assert.Equal(0, b)); // and its audio is overwritten
+    }
+
+    [Fact]
+    public async Task Audio_IsOverwritten_OnceItHasBeenTranscribed()
+    {
+        var recorder = _platform.Expect("A");
+        Controller.OnSessionStarted(++_lastId);
+        await WaitFor(() => recorder.Started, "the microphone");
+        End(_lastId);
+        await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
+        await WaitFor(() => recorder.Result.WavBytes.All(b => b == 0), "the audio to be overwritten");
+    }
+
+    [Fact]
+    public async Task Audio_IsOverwritten_WhenADictationIsCancelled()
+    {
+        var recorder = _platform.Expect("A");
+        Controller.OnSessionStarted(++_lastId);
+        await WaitFor(() => recorder.Started, "the microphone");
+        End(_lastId, SessionEndReason.Cancelled);
+        await WaitFor(() => OverlayShowed("flash:Cancelled"), "the feedback");
+        await WaitFor(() => recorder.Result.WavBytes.All(b => b == 0), "the audio to be overwritten");
+        Assert.Empty(_speech.Transcribed);
+    }
+
+    [Fact]
+    public async Task UndeliveredText_IsRemovedFromTheClipboard_WhenItsTimeIsUp()
+    {
+        _timings = Fast with { RecoveryClearMs = 300 };
+        _target.UserCopies("my own text");
+        _target.InputBlocked = true;
+        await DictateAsync("A");
+        await WaitFor(() => OverlayShowed("notice:Not inserted · 2 words in clipboard — press Ctrl+V"), "the notice");
+        Assert.Equal("Text A. ", _target.Clipboard);
+
+        // Two minutes in the app; a fraction of a second here. The user's text comes back.
+        await WaitFor(() => _target.Clipboard == "my own text", "the undelivered text to be removed");
+    }
+
+    [Fact]
+    public async Task UndeliveredText_IsNotTouched_OnceTheUserHasCopiedSomethingElse()
+    {
+        _timings = Fast with { RecoveryClearMs = 300 };
+        _target.InputBlocked = true;
+        await DictateAsync("A");
+        await WaitFor(() => _target.Clipboard == "Text A. ", "A on the clipboard");
+
+        _target.UserCopies("copied after the notice");
+        await Task.Delay(600);
+        Assert.Equal("copied after the notice", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task UndeliveredText_IsRemovedWhenWinDictateExits()
+    {
+        _target.UserCopies("my own text");
+        _target.InputBlocked = true;
+        await DictateAsync("A");
+        await WaitFor(() => _target.Clipboard == "Text A. ", "A on the clipboard");
+
+        Controller.Dispose();
+        Assert.Equal("my own text", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task LastDictation_CanBeCopiedForAShortWhile_ThenItIsRemovedAgain()
+    {
+        _timings = Fast with { RecoveryClearMs = 300 };
+        _target.UserCopies("my own text");
+        await DictateAsync("A");
+        await WaitFor(() => _target.Delivered.Length == 1, "the insertion");
+        await WaitFor(() => _target.Clipboard == "my own text", "the clipboard restore");
+
+        // The paste went nowhere (no text box had focus): copy it from the tray menu.
+        Assert.True(Controller.CanCopyLastDictation);
+        Assert.True(await Controller.CopyLastDictationAsync());
+        Assert.Equal("Text A. ", _target.Clipboard);
+        await WaitFor(() => OverlayShowed("notice:Copied · last dictation in clipboard — press Ctrl+V"), "the notice");
+
+        await WaitFor(() => _target.Clipboard == "my own text", "the copy to be removed again");
+    }
+
+    [Fact]
+    public async Task LastDictation_IsForgotten_AfterAShortWhile()
+    {
+        _timings = Fast with { LastDictationKeepMs = 600 };
+        await DictateAsync("A");
+        await WaitFor(() => OverlayShowed("flash:Inserted 2 words"), "the result");
+        Assert.True(Controller.CanCopyLastDictation);
+
+        await WaitFor(() => !Controller.CanCopyLastDictation, "the last dictation to be forgotten", timeoutMs: 3000);
+        Assert.False(await Controller.CopyLastDictationAsync());
+    }
+
+    [Fact]
+    public async Task NothingDictated_IsWrittenToDisk_NorToTheLog()
+    {
+        const string secret = "Quartz zebra invoice forty four seventy one.";
+        Directory.CreateDirectory(AppSettings.DataDir);
+        Logger.Info("controller test: start of the no-text-on-disk check"); // the log exists and is scanned below
+        _speech.Texts["A"] = secret;
+        _speech.Texts["B"] = secret;
+        await DictateAsync("A");
+        await WaitFor(() => _target.Delivered.Length == 1, "A's insertion");
+        _target.InputBlocked = true;          // and one that cannot be delivered
+        await DictateAsync("B");
+        await WaitFor(() => OverlayShowed("notice:Not inserted · 7 words in clipboard — press Ctrl+V"), "B's notice");
+        Controller.Dispose();
+
+        foreach (string file in Directory.EnumerateFiles(AppSettings.DataDir, "*", SearchOption.AllDirectories))
+        {
+            string name = Path.GetFileName(file);
+            Assert.True(name is "windictate.log" or "windictate.log.old" or "settings.json",
+                $"unexpected file in the data folder: {name}");
+            string content;
+            using (var reader = new StreamReader(new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)))
+                content = reader.ReadToEnd();
+            Assert.DoesNotContain("Quartz", content, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("zebra", content, StringComparison.OrdinalIgnoreCase);
+        }
     }
 }

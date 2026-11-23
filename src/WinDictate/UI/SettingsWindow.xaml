@@ -26,6 +26,14 @@
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
 
+        <!-- A value the pilot fixes: shown, not changed. -->
+        <Style x:Key="Fixed" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
         <!-- One setting: its name (Header) and a line of explanation (Tag) on the left, its control on the right. -->
         <Style x:Key="Row" TargetType="HeaderedContentControl">
             <Setter Property="Focusable" Value="False"/>
@@ -276,10 +284,7 @@
                 </HeaderedContentControl>
 
                 <TextBlock Style="{StaticResource GroupLabel}" Text="THIS PC"/>
-                <HeaderedContentControl x:Name="AutoStartRow" Style="{StaticResource FirstRow}" Header="Start with Windows" Tag="Ready as soon as you sign in">
-                    <CheckBox x:Name="AutoStartBox" Style="{StaticResource Switch}" AutomationProperties.Name="Start with Windows"/>
-                </HeaderedContentControl>
-                <HeaderedContentControl x:Name="MicRow" Style="{StaticResource Row}" Header="Microphone" Tag="System default">
+                <HeaderedContentControl x:Name="MicRow" Style="{StaticResource FirstRow}" Header="Microphone" Tag="System default">
                     <StackPanel Orientation="Horizontal">
                         <Border Width="64" Height="4" CornerRadius="2" VerticalAlignment="Center" Margin="0,0,10,0"
                                 Background="{DynamicResource ControlStrongStrokeColorDefaultBrush}">
@@ -287,25 +292,23 @@
                                     Background="{DynamicResource TextFillColorPrimaryBrush}"/>
                         </Border>
                         <Button x:Name="MicTestButton" Content="Test" FontSize="12.5" Padding="12,5" MinWidth="56"
-                                ToolTip="Listens for a few seconds. Nothing is kept."/>
+                                ToolTip="Listens for a few seconds. Nothing is recorded or kept."/>
                     </StackPanel>
                 </HeaderedContentControl>
-                <HeaderedContentControl x:Name="QualityRow" Style="{StaticResource Row}" Header="Speech quality" Tag="Balanced suits most laptops">
-                    <Border Style="{StaticResource Segments}">
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton x:Name="QualityFast" GroupName="Quality" Style="{StaticResource Segment}" Content="Fast"/>
-                            <RadioButton x:Name="QualityBalanced" GroupName="Quality" Style="{StaticResource Segment}" Content="Balanced"/>
-                            <RadioButton x:Name="QualityAccurate" GroupName="Quality" Style="{StaticResource Segment}" Content="Accurate"/>
-                        </StackPanel>
-                    </Border>
+                <HeaderedContentControl x:Name="SpeechRow" Style="{StaticResource Row}" Header="Speech recognition" Tag="On this PC only, English (small.en model)">
+                    <TextBlock Style="{StaticResource Fixed}" Text="Fixed"/>
                 </HeaderedContentControl>
 
-                <TextBlock Style="{StaticResource GroupLabel}" Text="PRIVACY"/>
-                <HeaderedContentControl Style="{StaticResource FirstRow}" Header="Keep the text on the clipboard" Tag="Paste it again with Ctrl+V">
-                    <CheckBox x:Name="KeepClipboardBox" Style="{StaticResource Switch}" AutomationProperties.Name="Keep the text on the clipboard"/>
+                <!-- Fixed in the restricted pilot: shown so people can see what WinDictate does, not changed here. -->
+                <TextBlock Style="{StaticResource GroupLabel}" Text="PRIVACY (FIXED IN THIS PILOT)"/>
+                <HeaderedContentControl Style="{StaticResource FirstRow}" Header="History" Tag="Nothing you say or dictate is saved: no audio, no text">
+                    <TextBlock Style="{StaticResource Fixed}" Text="Off"/>
                 </HeaderedContentControl>
-                <HeaderedContentControl Style="{StaticResource Row}" Header="Save a history of dictations" Tag="Off: nothing is written to disk">
-                    <CheckBox x:Name="LogTranscripts" Style="{StaticResource Switch}" AutomationProperties.Name="Save a history of dictations"/>
+                <HeaderedContentControl Style="{StaticResource Row}" Header="Your clipboard" Tag="Put back after each dictation. Text that could not be inserted is removed after 2 minutes">
+                    <TextBlock Style="{StaticResource Fixed}" Text="Restored"/>
+                </HeaderedContentControl>
+                <HeaderedContentControl Style="{StaticResource Row}" Header="Network" Tag="WinDictate never connects to the internet or to any server">
+                    <TextBlock Style="{StaticResource Fixed}" Text="Not used"/>
                 </HeaderedContentControl>
 
                 <StackPanel x:Name="AdvancedPanel" Visibility="Collapsed">
@@ -333,28 +336,16 @@
                     <HeaderedContentControl Style="{StaticResource Row}" Header="Microphone to use" Tag="System default follows Windows, for example when a headset is plugged in">
                         <ComboBox x:Name="MicBox" Width="236" AutomationProperties.Name="Microphone to use"/>
                     </HeaderedContentControl>
-                    <HeaderedContentControl x:Name="ModelRow" Style="{StaticResource Row}" Header="Speech model" Tag="">
-                        <ComboBox x:Name="ModelBox" Width="236" AutomationProperties.Name="Speech model"/>
-                    </HeaderedContentControl>
                     <HeaderedContentControl Style="{StaticResource Row}" Header="Custom words" Tag="Names and acronyms to listen for, separated by commas"/>
                     <TextBox x:Name="VocabBox" TextWrapping="Wrap" Margin="0,0,0,12" AutomationProperties.Name="Custom words"/>
-                    <HeaderedContentControl Style="{StaticResource Row}" Header="AI cleanup" Tag="Off: nothing leaves this PC. On: each dictation is sent to the service below to tidy its punctuation">
-                        <CheckBox x:Name="CleanupEnabled" Style="{StaticResource Switch}" AutomationProperties.Name="AI cleanup"/>
-                    </HeaderedContentControl>
-                    <StackPanel x:Name="CleanupFields" Margin="0,0,0,4">
-                        <TextBlock Style="{StaticResource FieldLabel}" Margin="0,0,0,4" Text="Service address (OpenAI-compatible, for example an internal gateway)"/>
-                        <TextBox x:Name="CleanupUrl" AutomationProperties.Name="Cleanup service address"/>
-                        <TextBlock Style="{StaticResource FieldLabel}" Text="Model"/>
-                        <TextBox x:Name="CleanupModel" AutomationProperties.Name="Cleanup model"/>
-                        <TextBlock Style="{StaticResource FieldLabel}" Text="API key (kept in settings.json on this PC; leave empty if the gateway needs none)"/>
-                        <PasswordBox x:Name="CleanupKey" AutomationProperties.Name="Cleanup API key"/>
-                        <TextBlock Style="{StaticResource FieldLabel}" Text="If the service fails or is slow, the text is inserted as it was heard."/>
-                    </StackPanel>
                     <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" Padding="0,11,0,0" Margin="0,8,0,0">
                         <Grid>
                             <TextBlock x:Name="VersionText" FontSize="12.5" VerticalAlignment="Center"
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
-                            <Button x:Name="OpenDataButton" Content="Open data folder" FontSize="12.5" Padding="10,5" HorizontalAlignment="Right"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button x:Name="AboutButton" Content="About" FontSize="12.5" Padding="10,5" Margin="0,0,8,0"/>
+                                <Button x:Name="OpenDataButton" Content="Open data folder" FontSize="12.5" Padding="10,5"/>
+                            </StackPanel>
                         </Grid>
                     </Border>
                 </StackPanel>

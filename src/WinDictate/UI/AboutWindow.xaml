@@ -1,0 +1,80 @@
+<Window x:Class="WinDictate.UI.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="About WinDictate" Width="500" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        ThemeMode="System" UseLayoutRounding="True">
+    <Window.Resources>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <Setter Property="Margin" Value="0,5,16,5"/>
+            <Setter Property="VerticalAlignment" Value="Top"/>
+        </Style>
+        <Style x:Key="Value" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Margin" Value="0,5,0,5"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="28,20,28,20" TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,14">
+            <TextBlock x:Name="ProductText" FontSize="20" FontWeight="SemiBold"/>
+            <TextBlock Text="Local push-to-talk dictation. Speech is recognised on this PC; nothing is sent anywhere."
+                       FontSize="12.5" TextWrapping="Wrap" Margin="0,4,0,0"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+        </StackPanel>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Style="{StaticResource Label}" Text="Version"/>
+            <TextBlock Grid.Row="0" Grid.Column="1" Style="{StaticResource Value}" x:Name="VersionValue"/>
+            <TextBlock Grid.Row="1" Style="{StaticResource Label}" Text="Built"/>
+            <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource Value}" x:Name="BuiltValue"/>
+            <TextBlock Grid.Row="2" Style="{StaticResource Label}" Text="Source commit"/>
+            <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource Value}" x:Name="CommitValue" FontFamily="Cascadia Mono, Consolas"/>
+            <TextBlock Grid.Row="3" Style="{StaticResource Label}" Text="Speech model"/>
+            <TextBlock Grid.Row="3" Grid.Column="1" Style="{StaticResource Value}" x:Name="ModelValue"/>
+            <TextBlock Grid.Row="4" Style="{StaticResource Label}" Text="Speech recognition"/>
+            <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource Value}" Text="On this PC only"/>
+            <TextBlock Grid.Row="5" Style="{StaticResource Label}" Text="Transcript history"/>
+            <TextBlock Grid.Row="5" Grid.Column="1" Style="{StaticResource Value}" Text="Disabled: not available in this build"/>
+            <TextBlock Grid.Row="6" Style="{StaticResource Label}" Text="External AI cleanup"/>
+            <TextBlock Grid.Row="6" Grid.Column="1" Style="{StaticResource Value}" Text="Disabled: not included in this build"/>
+            <TextBlock Grid.Row="7" Style="{StaticResource Label}" Text="Network"/>
+            <TextBlock Grid.Row="7" Grid.Column="1" Style="{StaticResource Value}" Text="Not used"/>
+        </Grid>
+
+        <WrapPanel Grid.Row="2" Margin="0,14,0,0">
+            <Button x:Name="NoticeButton" Content="Pilot notice" FontSize="12.5" Padding="10,5" Margin="0,0,8,8"/>
+            <Button x:Name="LicenceButton" Content="Licence" FontSize="12.5" Padding="10,5" Margin="0,0,8,8"/>
+            <Button x:Name="NoticesButton" Content="Third-party notices" FontSize="12.5" Padding="10,5" Margin="0,0,8,8"/>
+            <Button x:Name="CopyButton" Content="Copy details" FontSize="12.5" Padding="10,5" Margin="0,0,8,8"
+                    ToolTip="Copies the lines above, for a support request"/>
+        </WrapPanel>
+
+        <Button Grid.Row="3" x:Name="CloseButton" Content="Close" MinWidth="84" MinHeight="32" HorizontalAlignment="Right"
+                Margin="0,8,0,0" IsCancel="True" IsDefault="True"/>
+    </Grid>
+</Window>

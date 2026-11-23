@@ -48,6 +48,45 @@ public class AppSettingsTests
     public void Defaults_AddTrailingSpace() => Assert.True(new AppSettings().AddTrailingSpace);
 
     [Fact]
+    public void SettingsFromAnotherBuild_DropCleanupAndHistory_WhenSaved()
+    {
+        // A file written by a build that had AI cleanup, history and a model choice,
+        // including an API key: the pilot ignores those settings and does not write them back.
+        string json = V013SettingsJson.Replace("\"ApiKey\": \"\"", "\"ApiKey\": \"sk-example-not-a-real-key\"");
+        var settings = AppSettings.Parse(json);
+        string saved = AppSettings.Serialize(settings);
+
+        foreach (string gone in new[] { "Cleanup", "ApiKey", "sk-example", "LogTranscripts", "KeepInClipboard", "\"Model\"", "Language" })
+            Assert.DoesNotContain(gone, saved);
+        Assert.Equal(2, settings.MicDeviceIndex); // everything else is kept
+    }
+
+    [Fact]
+    public void Settings_HoldOnlyTheNoticeAcknowledgement_NeverAnythingDictated()
+    {
+        var settings = new AppSettings { NoticeAcknowledged = PilotNotice.Version };
+        var copy = AppSettings.Parse(AppSettings.Serialize(settings));
+        Assert.True(PilotNotice.IsAcknowledged(copy));
+        Assert.False(PilotNotice.IsAcknowledged(new AppSettings()));
+    }
+
+    [Fact]
+    public void DataFolder_IsLocalNotRoaming()
+    {
+        string? saved = AppSettings.DataDirOverride;
+        try
+        {
+            AppSettings.DataDirOverride = null;
+            Assert.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppSettings.DataDir);
+            Assert.EndsWith("WinDictate", AppSettings.DataDir);
+        }
+        finally
+        {
+            AppSettings.DataDirOverride = saved;
+        }
+    }
+
+    [Fact]
     public void RoundTrip_PreservesValues()
     {
         var original = new AppSettings { SilenceThreshold = 0.002, MinVoicedMs = 200, Hotkey = "Ctrl+Shift" };

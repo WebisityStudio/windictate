@@ -12,8 +12,10 @@ using MessageBoxImage = System.Windows.MessageBoxImage;
 namespace WinDictate.UI;
 
 /// <summary>
-/// Settings: the everyday choices up front in plain words, everything else
-/// under Advanced. Nothing changes until Save.
+/// Settings: the everyday choices up front in plain words, the rest under
+/// Advanced. In the restricted pilot the privacy behaviour (no history, the
+/// clipboard always put back, no network) and the speech model are fixed and
+/// only shown here. Nothing changes until Save.
 /// </summary>
 public partial class SettingsWindow : Window
 {
@@ -21,11 +23,10 @@ public partial class SettingsWindow : Window
     private const double MicBarWidth = 64;
 
     private readonly AppSettings _settings;
+    private readonly ModelCheck? _modelState;        // the model check's result, or null while it runs
     private readonly List<string> _micNames = new(); // current waveIn devices, by index
     private int _missingMicItem = -1;                // combo index of a "(not connected)" entry
     private IDictationIndicator? _preview;           // the indicator shown by the Preview button
-    private AutoStart.State _autoStartWas;           // what Windows said when the window opened
-    private bool _syncingModel;                      // the quality choice and the model list are being lined up
 
     // Microphone test: listens briefly to move the bar. Nothing is kept.
     private AudioRecorder? _micTest;
@@ -36,34 +37,27 @@ public partial class SettingsWindow : Window
 
     public event Action? Saved;
 
-    public SettingsWindow(AppSettings settings)
+    public SettingsWindow(AppSettings settings, ModelCheck? modelState = null)
     {
         InitializeComponent();
         _settings = settings;
+        _modelState = modelState;
         MaxHeight = Math.Max(420, SystemParameters.WorkArea.Height - 24);
-        VersionText.Text = $"WinDictate v{Logger.AppVersion}";
+        VersionText.Text = $"{BuildInfo.Product} {BuildInfo.Version}";
 
-        PopulateModels();
         LoadInto();
         PopulateMics();
         MicRow.Tag = MicLine();
-        RefreshModelLines();
         RefreshStatus();
 
         SaveButton.Click += (_, _) => Save();
         CloseButton.Click += (_, _) => Close();
         OpenDataButton.Click += (_, _) => OpenDataFolder();
+        AboutButton.Click += (_, _) => AboutWindow.ShowSingle(_modelState, _settings.Hotkey);
         IndicatorPreviewButton.Click += (_, _) => PreviewIndicator();
         MicTestButton.Click += (_, _) => ToggleMicTest();
         MicBox.SelectionChanged += (_, _) => OnMicChosen();
         HotkeyBox.SelectionChanged += (_, _) => ShowShortcutKeys();
-        ModelBox.SelectionChanged += (_, _) => OnModelChosen();
-        QualityFast.Checked += (_, _) => OnQualityChosen(SpeechQuality.Fast);
-        QualityBalanced.Checked += (_, _) => OnQualityChosen(SpeechQuality.Balanced);
-        QualityAccurate.Checked += (_, _) => OnQualityChosen(SpeechQuality.Accurate);
-        CleanupEnabled.Checked += (_, _) => OnCleanupChanged();
-        CleanupEnabled.Unchecked += (_, _) => OnCleanupChanged();
-        CleanupUrl.TextChanged += (_, _) => RefreshStatus();
         AdvancedToggle.Checked += (_, _) => ShowAdvanced(true);
         AdvancedToggle.Unchecked += (_, _) => ShowAdvanced(false);
         SizeChanged += (_, _) => KeepOnScreen();
@@ -84,53 +78,27 @@ public partial class SettingsWindow : Window
         SelectCombo(HotkeyBox, _settings.Hotkey);
         ShowShortcutKeys();
         MinHoldBox.Text = _settings.MinHoldMs.ToString();
-        SelectModel(_settings.Model);
         VocabBox.Text = _settings.VocabularyHint;
         bool type = _settings.InsertMode.Equals("type", StringComparison.OrdinalIgnoreCase);
         TypeRadio.IsChecked = type;
         PasteRadio.IsChecked = !type;
-        KeepClipboardBox.IsChecked = _settings.KeepInClipboard;
         TrailingSpaceBox.IsChecked = _settings.AddTrailingSpace;
         bool glow = IndicatorFactory.ParseStyle(_settings.Indicator) == IndicatorStyle.Glow;
         IndicatorGlowRadio.IsChecked = glow;
         IndicatorPillRadio.IsChecked = !glow;
-        CleanupEnabled.IsChecked = _settings.Cleanup.Enabled;
-        CleanupUrl.Text = _settings.Cleanup.BaseUrl;
-        CleanupModel.Text = _settings.Cleanup.Model;
-        CleanupKey.Password = _settings.Cleanup.ApiKey;
-        CleanupFields.IsEnabled = _settings.Cleanup.Enabled;
-        CleanupFields.Opacity = _settings.Cleanup.Enabled ? 1 : 0.5;
-        LogTranscripts.IsChecked = _settings.LogTranscripts;
-
-        _autoStartWas = AutoStart.Read();
-        AutoStartBox.IsChecked = _autoStartWas == AutoStart.State.On;
-        AutoStartRow.Tag = _autoStartWas == AutoStart.State.OffInWindows
-            ? "Switched off in Windows' Startup apps" // switching it on here allows it again
-            : "Ready as soon as you sign in";
     }
 
     private void ShowShortcutKeys() =>
         ShortcutKeys.ItemsSource = SettingsLogic.HotkeyKeys((HotkeyBox.SelectedItem as ComboBoxItem)?.Content?.ToString());
 
-    /// <summary>The line at the top: says "everything stays on this PC" only while that is true.</summary>
+    /// <summary>The line at the top: where things stand.</summary>
     private void RefreshStatus()
     {
-        SettingsStatus status = SettingsLogic.StatusLine(
-            File.Exists(Transcriber.ModelPath(SelectedModel())),
-            CleanupEnabled.IsChecked == true,
-            CleanupUrl.Text);
+        SettingsStatus status = SettingsLogic.StatusLine(_modelState);
         StatusText.Text = status.Text;
         StatusText.ToolTip = status.Text;
         StatusDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty,
             status.AllGood ? "SystemFillColorSuccessBrush" : "SystemFillColorCautionBrush");
-    }
-
-    private void OnCleanupChanged()
-    {
-        bool on = CleanupEnabled.IsChecked == true;
-        CleanupFields.IsEnabled = on;
-        CleanupFields.Opacity = on ? 1 : 0.5;
-        RefreshStatus();
     }
 
     // ----- Advanced -----
@@ -301,72 +269,6 @@ public partial class SettingsWindow : Window
         _micOpening = Task.CompletedTask;
     }
 
-    // ----- Speech model -----
-
-    private void PopulateModels()
-    {
-        ModelBox.Items.Clear();
-        foreach (ModelInfo model in SettingsLogic.Models)
-            ModelBox.Items.Add(new ComboBoxItem { Content = $"{model.Name} ({model.Summary})", Tag = model.Name });
-    }
-
-    private string SelectedModel() => (ModelBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "small.en";
-
-    private void SelectModel(string model)
-    {
-        _syncingModel = true;
-        try
-        {
-            ComboBoxItem? match = ModelBox.Items.OfType<ComboBoxItem>()
-                .FirstOrDefault(item => string.Equals(item.Tag as string, model, StringComparison.OrdinalIgnoreCase));
-            if (match == null)
-            {
-                // A model named by hand in settings.json: keep it rather than replace it on save.
-                match = new ComboBoxItem { Content = model, Tag = model };
-                ModelBox.Items.Add(match);
-            }
-            ModelBox.SelectedItem = match;
-            ShowQuality(SettingsLogic.QualityOf(model));
-        }
-        finally
-        {
-            _syncingModel = false;
-        }
-    }
-
-    private void ShowQuality(SpeechQuality? quality)
-    {
-        QualityFast.IsChecked = quality == SpeechQuality.Fast;
-        QualityBalanced.IsChecked = quality == SpeechQuality.Balanced;
-        QualityAccurate.IsChecked = quality == SpeechQuality.Accurate;
-    }
-
-    private void OnQualityChosen(SpeechQuality quality)
-    {
-        if (_syncingModel) return;
-        SelectModel(SettingsLogic.ModelFor(quality));
-        RefreshModelLines();
-        RefreshStatus();
-    }
-
-    private void OnModelChosen()
-    {
-        if (_syncingModel) return;
-        _syncingModel = true;
-        try { ShowQuality(SettingsLogic.QualityOf(SelectedModel())); }
-        finally { _syncingModel = false; }
-        RefreshModelLines();
-        RefreshStatus();
-    }
-
-    private void RefreshModelLines()
-    {
-        string model = SelectedModel();
-        bool downloaded = File.Exists(Transcriber.ModelPath(model));
-        QualityRow.Tag = SettingsLogic.QualityLine(model, downloaded);
-        ModelRow.Tag = SettingsLogic.ModelLine(model, downloaded);
-    }
-
     // ----- Saving -----
 
     private void Save()
@@ -381,34 +283,15 @@ public partial class SettingsWindow : Window
 
         _settings.Hotkey = (HotkeyBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Ctrl+Alt";
         _settings.MinHoldMs = minHold;
-        _settings.Model = SelectedModel();
         _settings.VocabularyHint = VocabBox.Text.Trim();
         _settings.InsertMode = TypeRadio.IsChecked == true ? "type" : "paste";
-        _settings.KeepInClipboard = KeepClipboardBox.IsChecked == true;
         _settings.AddTrailingSpace = TrailingSpaceBox.IsChecked == true;
         _settings.Indicator = SelectedIndicator() == IndicatorStyle.Glow ? "glow" : "pill";
         SaveMicChoice();
-        _settings.Cleanup.Enabled = CleanupEnabled.IsChecked == true;
-        _settings.Cleanup.BaseUrl = CleanupUrl.Text.Trim();
-        _settings.Cleanup.Model = CleanupModel.Text.Trim();
-        _settings.Cleanup.ApiKey = CleanupKey.Password;
-        _settings.LogTranscripts = LogTranscripts.IsChecked == true;
 
         AppSettings.Save(_settings);
-        SaveAutoStart();
         Saved?.Invoke();
         Close();
-    }
-
-    /// <summary>Touches Windows' startup list only when the switch was actually changed.</summary>
-    private void SaveAutoStart()
-    {
-        bool want = AutoStartBox.IsChecked == true;
-        if (want == (_autoStartWas == AutoStart.State.On)) return;
-        if (AutoStart.Set(want)) return;
-        MessageBox.Show(this,
-            "Windows did not allow the \"Start with Windows\" change. Your other settings were saved.",
-            "WinDictate", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private static void SelectCombo(System.Windows.Controls.ComboBox box, string value)

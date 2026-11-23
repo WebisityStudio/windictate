@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -86,19 +87,18 @@ public class AppSmokeTests
 
     /// <summary>
     /// The Settings window in its Windows 11 look, light and dark: it opens, shows
-    /// the saved choices in plain words, opens Advanced without leaving the screen,
-    /// keeps the plain quality choice and the model list in step, and only claims
-    /// that everything stays on the PC while that is true.
+    /// the saved choices, shows the pilot's fixed privacy behaviour without any
+    /// control to change it, fits a small laptop screen, and opens Advanced.
     /// </summary>
     [Theory]
     [InlineData("light")]
     [InlineData("dark")]
-    public void SettingsWindow_ShowsTheSavedChoices_AndItsAdvancedPart(string theme) => Ui.Run(() =>
+    public void SettingsWindow_ShowsTheSavedChoices_AndThePilotsFixedPrivacy(string theme) => Ui.Run(() =>
     {
         bool dark = theme == "dark";
         IndicatorTheme.ForcedAnimations = false;
-        var settings = new AppSettings { Indicator = "glow", Model = "medium.en", Hotkey = "Ctrl+Shift" };
-        var window = new SettingsWindow(settings) { ThemeMode = dark ? ThemeMode.Dark : ThemeMode.Light };
+        var settings = new AppSettings { Indicator = "glow", Hotkey = "Ctrl+Shift" };
+        var window = new SettingsWindow(settings, ModelCheck.Ok) { ThemeMode = dark ? ThemeMode.Dark : ThemeMode.Light };
         try
         {
             window.Show();
@@ -108,52 +108,33 @@ public class AppSmokeTests
             // pictures use the plain colour Windows falls back to when transparency is off.
             Color fallback = dark ? Color.FromRgb(0x20, 0x20, 0x20) : Color.FromRgb(0xF3, 0xF3, 0xF3);
             Color behind = window.Background is System.Windows.Media.SolidColorBrush own && own.Color.A == 0xFF ? own.Color : fallback;
-            Ui.Note($"settings-{theme}", $"window background reported by the theme: {window.Background}; picture drawn over #{behind.R:X2}{behind.G:X2}{behind.B:X2}");
 
             Assert.True(window.IndicatorGlowRadio.IsChecked == true, "the saved indicator should be selected");
             Assert.True(window.TrailingSpaceBox.IsChecked == true, "new settings should load their defaults");
-            Assert.True(window.KeepClipboardBox.IsChecked == true);
-            Assert.True(window.LogTranscripts.IsChecked == false);
-            Assert.True(window.QualityAccurate.IsChecked == true, "medium.en is the Accurate choice");
             Assert.Equal(new[] { "Ctrl", "Shift" }, window.ShortcutKeys.Items.Cast<string>().ToArray());
-            Assert.False(string.IsNullOrWhiteSpace(window.StatusText.Text));
+            Assert.Equal("Ready. Everything stays on this PC.", window.StatusText.Text);
             Assert.Equal(Visibility.Collapsed, window.AdvancedPanel.Visibility);
-            Assert.True(window.SaveButton.ActualWidth > 40 && window.SaveButton.ActualHeight > 20, "the Save button should be laid out");
-            Assert.True(Ui.Capture(window, $"settings-{theme}", behind, plain: true) > 5000, "the window should draw its content");
 
-            // Advanced opens below, and the window stays within the screen.
-            double before = window.ActualHeight;
+            // Nothing on the page can switch on history, cleanup, a model download or start-up with Windows.
+            string everything = string.Join(" | ", LogicalText(window));
+            foreach (string absent in new[] { "AI cleanup", "API key", "Start with Windows", "Speech quality", "Save a history", "Keep the text on the clipboard" })
+                Assert.DoesNotContain(absent, everything);
+            foreach (string shown in new[] { "PRIVACY (FIXED IN THIS PILOT)", "Not used", "Restored", "small.en" })
+                Assert.Contains(shown, everything);
+
             // A 14-inch laptop at 150% scaling leaves about 650 units of height: the everyday page must fit without scrolling.
+            double before = window.ActualHeight;
             Ui.Note($"settings-{theme}", $"everyday page: {window.ActualWidth:F0} x {before:F0} units");
             Assert.True(before <= 648, $"the everyday page is {before:F0} units tall; it must fit a small laptop screen (648)");
             Assert.Equal(0, window.Scroller.ScrollableHeight, 1.0);
+            Assert.True(Ui.Capture(window, $"settings-{theme}", behind, plain: true) > 5000, "the window should draw its content");
+
             window.AdvancedToggle.IsChecked = true;
             Ui.Pump(500);
             Assert.Equal(Visibility.Visible, window.AdvancedPanel.Visibility);
-            Assert.True(window.ActualHeight >= before, "the window should not shrink when Advanced opens");
             Assert.True(window.ActualHeight <= SystemParameters.WorkArea.Height, "the window must fit on the screen");
             Assert.True(window.Top + window.ActualHeight <= SystemParameters.WorkArea.Bottom + 1, "the window must not hang off the bottom of the screen");
-            Assert.Equal("medium.en", (window.ModelBox.SelectedItem as ComboBoxItem)?.Tag);
             Ui.Capture(window, $"settings-{theme}-advanced", behind, plain: true);
-
-            // The plain quality choice and the model list say the same thing.
-            window.QualityFast.IsChecked = true;
-            Ui.Pump(100);
-            Assert.Equal("base.en", (window.ModelBox.SelectedItem as ComboBoxItem)?.Tag);
-            window.ModelBox.SelectedItem = window.ModelBox.Items.OfType<ComboBoxItem>().First(item => (string?)item.Tag == "tiny.en");
-            Ui.Pump(100);
-            Assert.True(window.QualityFast.IsChecked == false && window.QualityBalanced.IsChecked == false && window.QualityAccurate.IsChecked == false,
-                "a model outside the three choices selects none of them");
-            Assert.StartsWith("Using tiny.en", window.QualityRow.Tag as string);
-
-            // "Everything stays on this PC" is only said while it is true.
-            window.CleanupUrl.Text = "https://gateway.example.test/v1";
-            window.CleanupEnabled.IsChecked = true;
-            Ui.Pump(100);
-            Assert.Equal("AI cleanup is on: text is sent to gateway.example.test", window.StatusText.Text);
-            window.CleanupEnabled.IsChecked = false;
-            Ui.Pump(100);
-            Assert.DoesNotContain("AI cleanup", window.StatusText.Text);
 
             // The Preview button plays a pretend dictation; it must not throw or steal the window.
             window.IndicatorPillRadio.IsChecked = true;
@@ -175,43 +156,185 @@ public class AppSmokeTests
         }
     });
 
-    /// <summary>
-    /// "Start with Windows" against the real registry of the signed-in user, under
-    /// a name of its own so a real WinDictate entry on this machine is never touched.
-    /// </summary>
-    [Fact]
-    public void StartWithWindows_WritesAndRemovesItsEntry()
+    /// <summary>The first-run notice, word for word, and About with the build details, light and dark.</summary>
+    [Theory]
+    [InlineData("light")]
+    [InlineData("dark")]
+    public void PilotNotice_AndAbout_ShowWhatTheBriefRequires(string theme) => Ui.Run(() =>
     {
-        const string name = "WinDictate-smoke-test";
-        const string exe = @"C:\Program Files\WinDictate smoke\WinDictate.exe";
-        const string runKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        bool dark = theme == "dark";
+        Color behind = dark ? Color.FromRgb(0x20, 0x20, 0x20) : Color.FromRgb(0xF3, 0xF3, 0xF3);
+        var notice = new PilotNoticeWindow("Ctrl+Alt", firstRun: true) { ThemeMode = dark ? ThemeMode.Dark : ThemeMode.Light };
+        var about = new AboutWindow(ModelCheck.Ok, "Ctrl+Alt") { ThemeMode = dark ? ThemeMode.Dark : ThemeMode.Light };
         try
         {
-            Assert.Equal(AutoStart.State.Off, AutoStart.Read(name, exe));
+            notice.Show();
+            Ui.Pump(500);
+            Assert.Equal(PilotNotice.Text, notice.NoticeText.Text);
+            Assert.Equal("I understand", notice.AcceptButton.Content);
+            Assert.Equal(Visibility.Visible, notice.ExitButton.Visibility);
+            Assert.True(Ui.Capture(notice, $"pilot-notice-{theme}", behind, plain: true) > 3000, "the notice should draw");
 
-            Assert.True(AutoStart.Set(true, name, exe));
-            Assert.Equal(AutoStart.State.On, AutoStart.Read(name, exe));
-            using (var run = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(runKey))
-                Assert.Equal("\"" + exe + "\"", run?.GetValue(name) as string);
-            // An entry for a copy of the app somewhere else is not "on" for this one.
-            Assert.Equal(AutoStart.State.Off, AutoStart.Read(name, @"D:\Elsewhere\WinDictate.exe"));
-
-            Assert.True(AutoStart.Set(false, name, exe));
-            Assert.Equal(AutoStart.State.Off, AutoStart.Read(name, exe));
-            using (var run = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(runKey))
-                Assert.Null(run?.GetValue(name));
+            about.Show();
+            Ui.Pump(500);
+            string text = string.Join(" | ", LogicalText(about));
+            Assert.Contains(BuildInfo.Version, text);
+            Assert.Contains(PilotModel.FileName, text);
+            Assert.Contains(PilotModel.ShortHash, text);
+            Assert.Contains("checksum verified", text);
+            Assert.Contains("Disabled: not available in this build", text); // transcript history
+            Assert.Contains("Disabled: not included in this build", text);  // external AI cleanup
+            Assert.Contains("On this PC only", text);
+            Assert.True(File.Exists(Path.Combine(AppContext.BaseDirectory, "LICENSE.txt")), "the licence ships beside the program");
+            Ui.Capture(about, $"about-{theme}", behind, plain: true);
         }
         finally
         {
-            AutoStart.Set(false, name, exe);
+            about.Close();
+            notice.Close();
+        }
+    });
+
+    /// <summary>Every piece of text in a window (labels, buttons, row headers and explanations).</summary>
+    private static IEnumerable<string> LogicalText(DependencyObject root)
+    {
+        foreach (object child in LogicalTreeHelper.GetChildren(root))
+        {
+            switch (child)
+            {
+                case string s when s.Length > 0: yield return s; break;
+                case TextBlock t when t.Text.Length > 0: yield return t.Text; break;
+                case HeaderedContentControl h:
+                    if (h.Header is string header) yield return header;
+                    if (h.Tag is string tag) yield return tag;
+                    break;
+                case ContentControl c when c.Content is string content: yield return content; break;
+            }
+            if (child is DependencyObject node)
+                foreach (string inner in LogicalText(node)) yield return inner;
         }
     }
+
+    /// <summary>
+    /// The compiled program, checked the way the source is checked on every build:
+    /// it references no networking library and no model downloader.
+    /// </summary>
+    [Fact]
+    public void TheProgram_ReferencesNoNetworkingCode()
+    {
+        System.Reflection.Assembly app = typeof(App).Assembly;
+        string[] references = app.GetReferencedAssemblies().Select(a => a.Name ?? "").ToArray();
+        foreach (string forbidden in new[] { "System.Net.Http", "System.Net.Sockets", "System.Net.Requests", "System.Net.WebClient", "System.Net.WebSockets.Client", "System.Net.Mail" })
+            Assert.DoesNotContain(forbidden, references);
+
+        using var stream = File.OpenRead(app.Location);
+        using var pe = new System.Reflection.PortableExecutable.PEReader(stream);
+        var metadata = System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(pe);
+        var typeNames = metadata.TypeReferences
+            .Select(h => metadata.GetTypeReference(h))
+            .Select(t => metadata.GetString(t.Namespace) + "." + metadata.GetString(t.Name))
+            .ToArray();
+        foreach (string forbidden in new[] { "HttpClient", "WebClient", "Socket", "WhisperGgmlDownloader", "HttpRequestMessage" })
+            Assert.DoesNotContain(typeNames, n => n.EndsWith("." + forbidden, StringComparison.Ordinal));
+        Ui.Note("no-network-references", $"checked: WinDictate.dll references {references.Length} assemblies and {typeNames.Length} types, none of them for networking or downloading");
+    }
+
+    /// <summary>This runner can run the speech engine: the checks the app makes at start-up pass here.</summary>
+    [Fact]
+    public void SystemChecks_PassOnThisRunner()
+    {
+        Assert.True(SystemCheck.CpuSupported(), "the runner's processor should have AVX2 and FMA");
+        Assert.Empty(SystemCheck.MissingRuntimeLibraries());
+        Ui.Note("system-check", "checked: AVX/AVX2/FMA present; Visual C++ runtime libraries found: " + string.Join(", ", SystemCheck.RequiredRuntimeLibraries));
+    }
+
+    /// <summary>
+    /// With a picture on the real Windows clipboard, a dictation in paste mode is
+    /// typed instead and the picture is still there afterwards.
+    /// </summary>
+    [Fact]
+    public void APictureOnTheClipboard_SurvivesADictation() => Ui.Run(() =>
+    {
+        const string dictated = "Typed so the picture survives. ";
+        var box = new TextBox { Width = 420, Height = 80, FontSize = 16, Margin = new Thickness(12) };
+        var window = new Window
+        {
+            Title = "WinDictate smoke: picture on the clipboard",
+            Content = box,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            Topmost = true,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen
+        };
+        var target = new WindowsTextTarget();
+        try
+        {
+            window.Show();
+            if (!Ui.TakeForeground(window))
+            {
+                Ui.Note("picture-survives", "NOT CHECKED: the test window could not take the keyboard focus on this machine");
+                return;
+            }
+            box.Focus();
+            Keyboard.Focus(box);
+            Ui.Pump(200);
+
+            var picture = new System.Windows.Media.Imaging.WriteableBitmap(8, 8, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+            System.Windows.Clipboard.SetImage(picture);
+            Assert.True(System.Windows.Clipboard.ContainsImage(), "the test picture should be on the clipboard");
+
+            var inserter = new TextInserter(target);
+            InsertResult result = inserter.InsertAsync(dictated, new InsertOptions(TypeMode: false, ClipboardRestoreDelayMs: 300), target.CurrentTarget())
+                .GetAwaiter().GetResult();
+            Ui.Pump(700);
+            Assert.Equal(InsertOutcome.Inserted, result.Outcome);
+            Assert.True(result.TypedToSpareClipboard, "typed rather than pasted, to leave the picture alone");
+            Assert.Equal(dictated, box.Text);
+            Assert.True(System.Windows.Clipboard.ContainsImage(), "the picture must still be on the clipboard");
+            Ui.Note("picture-survives", "checked: with a picture on the clipboard the dictation was typed and the picture was still there afterwards");
+        }
+        finally
+        {
+            window.Close();
+            try { System.Windows.Clipboard.Clear(); } catch { }
+        }
+    });
+
+    /// <summary>The pill names the application the text will go into (never the window title).</summary>
+    [Fact]
+    public void ThePill_NamesTheTargetApplication() => Ui.Run(() =>
+    {
+        IndicatorTheme.Forced = IndicatorPalette.Light;
+        IndicatorTheme.ForcedAnimations = false;
+        var owner = new Window { Title = "A confidential window title", Width = 300, Height = 120, WindowStartupLocation = WindowStartupLocation.CenterScreen };
+        var pill = new GlassPillWindow();
+        try
+        {
+            owner.Show();
+            Ui.Pump(200);
+            IntPtr handle = new System.Windows.Interop.WindowInteropHelper(owner).Handle;
+            pill.ShowListening(handle);
+            Ui.Speak(pill.SetLevel, 400);
+            string shown = pill.TargetShown;
+            Ui.Note("target-name", $"the pill named the test host as \"{shown}\"");
+            Assert.False(string.IsNullOrEmpty(shown), "the pill should name the application");
+            Assert.DoesNotContain("confidential", shown, StringComparison.OrdinalIgnoreCase);
+            Ui.Capture(pill, "pill-listening-with-target", Color.FromRgb(0xF3, 0xF3, 0xF3));
+        }
+        finally
+        {
+            pill.Dispose();
+            owner.Close();
+            IndicatorTheme.Forced = null;
+            IndicatorTheme.ForcedAnimations = null;
+        }
+    });
 
     [Fact]
     public void Clipboard_RoundTrips_WithoutTheUiThread() => Ui.Run(() =>
     {
         var target = new WindowsTextTarget();
-        (bool hadText, string? previous) = target.GetClipboardTextAsync().GetAwaiter().GetResult();
+        ClipboardSnapshot saved = target.ReadClipboardAsync().GetAwaiter().GetResult();
+        (bool hadText, string? previous) = (saved.Readable && saved.Text != null, saved.Text);
         try
         {
             long before = target.ClipboardSequence;
@@ -219,14 +342,22 @@ public class AppSmokeTests
             Assert.True(target.SetClipboardTextAsync(text).GetAwaiter().GetResult(), "writing to the clipboard");
             Assert.NotEqual(before, target.ClipboardSequence);
 
-            (bool ok, string? read) = target.GetClipboardTextAsync().GetAwaiter().GetResult();
-            Assert.True(ok, "reading the clipboard");
-            Assert.Equal(text, read);
+            ClipboardSnapshot read = target.ReadClipboardAsync().GetAwaiter().GetResult();
+            Assert.True(read.Readable, "reading the clipboard");
+            Assert.Equal(text, read.Text);
+            Assert.True(read.OnlyText, "WinDictate's own text (with its privacy markers) counts as plain text");
+
+            // Marked so that Windows clipboard history and cloud clipboard leave it out.
+            string[] formats = ClipboardAccess.TryGetFormatsAsync().GetAwaiter().GetResult();
+            Assert.Contains(ClipboardAccess.ExcludeFromMonitoring, formats);
+            Assert.Contains(ClipboardAccess.CanIncludeInHistory, formats);
+            Assert.Contains(ClipboardAccess.CanUploadToCloud, formats);
+            Ui.Note("clipboard-privacy", "checked: dictated text on the clipboard carries " + string.Join(", ", formats));
 
             Assert.True(target.ClearClipboardAsync().GetAwaiter().GetResult(), "clearing the clipboard");
-            (ok, read) = target.GetClipboardTextAsync().GetAwaiter().GetResult();
-            Assert.True(ok);
-            Assert.Null(read);
+            read = target.ReadClipboardAsync().GetAwaiter().GetResult();
+            Assert.True(read.Readable);
+            Assert.Null(read.Text);
         }
         finally
         {
@@ -250,7 +381,8 @@ public class AppSmokeTests
             WindowStartupLocation = WindowStartupLocation.CenterScreen
         };
         var target = new WindowsTextTarget();
-        (bool hadText, string? previous) = target.GetClipboardTextAsync().GetAwaiter().GetResult();
+        ClipboardSnapshot saved = target.ReadClipboardAsync().GetAwaiter().GetResult();
+        (bool hadText, string? previous) = (saved.Readable && saved.Text != null, saved.Text);
         try
         {
             window.Show();
@@ -315,8 +447,9 @@ public class AppSmokeTests
         var second = Make("WinDictate smoke: clicked here afterwards", 520);
         var target = new WindowsTextTarget();
         var inserter = new TextInserter(target);
-        var options = new InsertOptions(TypeMode: false, KeepInClipboard: true, ClipboardRestoreDelayMs: 300);
-        (bool hadText, string? previous) = target.GetClipboardTextAsync().GetAwaiter().GetResult();
+        var options = new InsertOptions(TypeMode: false, ClipboardRestoreDelayMs: 300);
+        ClipboardSnapshot saved = target.ReadClipboardAsync().GetAwaiter().GetResult();
+        (bool hadText, string? previous) = (saved.Readable && saved.Text != null, saved.Text);
         try
         {
             first.Window.Show();
@@ -358,9 +491,9 @@ public class AppSmokeTests
             Assert.Equal("", second.Box.Text);          // nothing typed into the wrong window
             Assert.Equal(stays, first.Box.Text);         // and nothing more into the first
 
-            (bool ok, string? onClipboard) = target.GetClipboardTextAsync().GetAwaiter().GetResult();
-            Assert.True(ok);
-            Assert.Equal(strays, onClipboard);           // the words are safe on the clipboard instead
+            ClipboardSnapshot onClipboard = target.ReadClipboardAsync().GetAwaiter().GetResult();
+            Assert.True(onClipboard.Readable);
+            Assert.Equal(strays, onClipboard.Text);      // the words are safe on the clipboard instead
 
             Ui.Capture(second.Window, "insert-only-where-started", White);
             Ui.Note("insert-only-where-started", "checked: text went in where it was dictated, and went to the clipboard, not the other window, after focus moved");
@@ -397,14 +530,15 @@ public class AppSmokeTests
             WindowStartupLocation = WindowStartupLocation.CenterScreen
         };
         var target = new WindowsTextTarget();
-        var options = new InsertOptions(TypeMode: false, KeepInClipboard: true, ClipboardRestoreDelayMs: 300);
-        (bool hadText, string? previous) = target.GetClipboardTextAsync().GetAwaiter().GetResult();
+        var options = new InsertOptions(TypeMode: false, ClipboardRestoreDelayMs: 300);
+        ClipboardSnapshot saved = target.ReadClipboardAsync().GetAwaiter().GetResult();
+        (bool hadText, string? previous) = (saved.Readable && saved.Text != null, saved.Text);
 
         string? OnClipboard()
         {
-            (bool ok, string? text) = target.GetClipboardTextAsync().GetAwaiter().GetResult();
-            Assert.True(ok, "reading the clipboard");
-            return text;
+            ClipboardSnapshot now = target.ReadClipboardAsync().GetAwaiter().GetResult();
+            Assert.True(now.Readable, "reading the clipboard");
+            return now.Text;
         }
 
         try
@@ -441,7 +575,7 @@ public class AppSmokeTests
             Assert.Equal(InsertOutcome.Inserted, afterCopy.Outcome);
             Assert.False(afterCopy.Typed, "pasted as usual once the user has copied something else");
             Assert.Equal(typedNext + pastedAfterCopy, box.Text);
-            Assert.Equal(pastedAfterCopy, OnClipboard());
+            Assert.Equal("copied by the user", OnClipboard()); // and the user's copy is put back
 
             // 3. Nothing is copied, but the time to paste runs out: back to normal as well.
             var brief = new TextInserter(target, protectMs: 500);
@@ -453,10 +587,20 @@ public class AppSmokeTests
             Assert.Equal(InsertOutcome.Inserted, afterTime.Outcome);
             Assert.False(afterTime.Typed, "pasted as usual once the time to paste the waiting text is up");
             Assert.Equal(typedNext + pastedAfterCopy + pastedAfterTime, box.Text);
-            Assert.Equal(pastedAfterTime, OnClipboard());
+            Assert.Equal(waiting, OnClipboard()); // the waiting text is put back after the paste...
+
+            // 4. ...until its time is up: then it is removed and the user's copy comes back.
+            var expiring = new TextInserter(target, protectMs: 0, clearMs: 500);
+            Assert.True(target.SetClipboardTextAsync("copied by the user").GetAwaiter().GetResult());
+            Assert.Equal(InsertOutcome.CopiedOnly, expiring.KeepForRecoveryAsync(waiting).GetAwaiter().GetResult().Outcome);
+            expiring.RecoveryAnnounced();
+            Assert.Equal(waiting, OnClipboard());
+            Ui.Pump(800);
+            Assert.True(expiring.ClearExpiredRecoveryAsync().GetAwaiter().GetResult(), "removing the waiting text");
+            Assert.Equal("copied by the user", OnClipboard());
 
             Ui.Capture(window, "clipboard-protection", White);
-            Ui.Note("clipboard-protection", "checked: text waiting on the clipboard was left alone by the next dictation, and pasting returned to normal after a copy and after the time limit");
+            Ui.Note("clipboard-protection", "checked: waiting text was left alone by the next dictation, pasting returned to normal after a copy and after the time limit, the user's copy was put back each time, and the waiting text was removed when its time was up");
         }
         finally
         {

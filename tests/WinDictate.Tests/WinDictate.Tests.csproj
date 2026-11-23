@@ -17,8 +17,10 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\WinDictate\Core\AppSettings.cs" Link="Linked\AppSettings.cs" />
-    <Compile Include="..\..\src\WinDictate\Core\AutoStartRules.cs" Link="Linked\AutoStartRules.cs" />
-    <Compile Include="..\..\src\WinDictate\Core\CleanupService.cs" Link="Linked\CleanupService.cs" />
+    <Compile Include="..\..\src\WinDictate\Core\BuildInfo.cs" Link="Linked\BuildInfo.cs" />
+    <Compile Include="..\..\src\WinDictate\Core\PilotModel.cs" Link="Linked\PilotModel.cs" />
+    <Compile Include="..\..\src\WinDictate\Core\PilotNotice.cs" Link="Linked\PilotNotice.cs" />
+    <Compile Include="..\..\src\WinDictate\Core\SystemCheck.cs" Link="Linked\SystemCheck.cs" />
     <Compile Include="..\..\src\WinDictate\Core\DictationController.cs" Link="Linked\DictationController.cs" />
     <Compile Include="..\..\src\WinDictate\Core\DictationServices.cs" Link="Linked\DictationServices.cs" />
     <Compile Include="..\..\src\WinDictate\Core\HotkeyMonitor.cs" Link="Linked\HotkeyMonitor.cs" />
@@ -35,6 +37,7 @@
     <Compile Include="..\..\src\WinDictate\UI\Indicators\IndicatorCues.cs" Link="Linked\Indicators\IndicatorCues.cs" />
     <Compile Include="..\..\src\WinDictate\UI\Indicators\IndicatorPlacement.cs" Link="Linked\Indicators\IndicatorPlacement.cs" />
     <Compile Include="..\..\src\WinDictate\UI\Indicators\WaveformShaper.cs" Link="Linked\Indicators\WaveformShaper.cs" />
+    <Compile Include="..\..\src\WinDictate\UI\Indicators\TargetApp.cs" Link="Linked\Indicators\TargetApp.cs" />
     <!-- The wording and small decisions behind the Settings window. -->
     <Compile Include="..\..\src\WinDictate\UI\SettingsLogic.cs" Link="Linked\SettingsLogic.cs" />
   </ItemGroup>

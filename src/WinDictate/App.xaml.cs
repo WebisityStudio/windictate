@@ -14,22 +14,38 @@ namespace WinDictate;
 
 public partial class App : Application
 {
+    /// <summary>A second copy started with this argument asks the running one to exit (for uninstall and IT scripts).</summary>
+    internal const string ExitArgument = "--exit";
+
+    private const string SingleInstanceName = "WinDictate.SingleInstance.9b1f";
+    private const string ExitSignalName = @"Local\WinDictate.Exit.9b1f";
+
     private Mutex? _singleInstance;
+    private EventWaitHandle? _exitSignal;
+    private RegisteredWaitHandle? _exitWait;
     private KeyboardHook? _hook;
     private HotkeyMonitor? _hotkeys;
     private HotkeyWatchdog? _watchdog;
     private DictationController? _controller;
+    private Transcriber? _transcriber;
     private IndicatorPresenter? _indicators;
     private NotifyIcon? _tray;
     private AppSettings _settings = new();
     private Icon? _idleIcon;
     private Icon? _busyIcon;
+    private ModelCheck? _modelProblem; // UI thread only
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
-        _singleInstance = new Mutex(true, "WinDictate.SingleInstance.9b1f", out bool isNew);
+        if (e.Args.Any(a => string.Equals(a, ExitArgument, StringComparison.OrdinalIgnoreCase)))
+        {
+            Shutdown(AskRunningCopyToExit() ? 0 : 1);
+            return;
+        }
+
+        _singleInstance = new Mutex(true, SingleInstanceName, out bool isNew);
         if (!isNew)
         {
             MessageBox.Show("WinDictate is already running (look for the tray icon).", "WinDictate",
@@ -47,16 +63,43 @@ public partial class App : Application
             Logger.Error("Unhandled domain exception", ex.ExceptionObject as Exception);
 
         Logger.Init();
+
+        // Can this PC run the speech engine at all? Checked before anything native loads.
+        string? problem = SystemCheck.Problem(SystemCheck.CpuSupported(), SystemCheck.MissingRuntimeLibraries());
+        if (problem != null)
+        {
+            Logger.Error("Cannot start: " + problem);
+            MessageBox.Show(problem, "WinDictate", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(2);
+            return;
+        }
+
         _settings = AppSettings.Load();
+
+        // The pilot-use notice: dictation only starts once it has been acknowledged.
+        if (!PilotNotice.IsAcknowledged(_settings))
+        {
+            if (!PilotNoticeWindow.AskOnFirstRun(_settings.Hotkey))
+            {
+                Logger.Info("Pilot notice not acknowledged; exiting");
+                Shutdown();
+                return;
+            }
+            _settings.NoticeAcknowledged = PilotNotice.Version;
+            AppSettings.Save(_settings);
+            Logger.Info($"Pilot notice version {PilotNotice.Version} acknowledged");
+        }
 
         // The listening indicator (glass pill or edge glow); its windows are only
         // created on screen the first time something is shown.
         _indicators = new IndicatorPresenter(Dispatcher, IndicatorFactory.ParseStyle(_settings.Indicator));
 
         OnStatus("Starting…"); // before the model warm-up can report "Ready"
+        _transcriber = new Transcriber();
         _controller = new DictationController(_settings, _indicators,
-            new WindowsDictationPlatform(), new Transcriber(), new WindowsTextTarget());
+            new WindowsDictationPlatform(), _transcriber, new WindowsTextTarget());
         _controller.StatusChanged += OnStatus;
+        _controller.ModelUnavailable += (check, message) => Dispatcher.BeginInvoke(() => OnModelUnavailable(check, message));
         _controller.Start();
 
         _hotkeys = new HotkeyMonitor(_settings.Hotkey);
@@ -67,7 +110,9 @@ public partial class App : Application
             // A release that never arrived may mean Windows dropped the hook.
             if (reason == SessionEndReason.KeysLost) _hook?.Reinstall();
         };
-        _controller.MaxDurationReached += id => _hotkeys!.StopSession(id);
+        // Time limit reached or microphone lost: the monitor ends the session and
+        // ignores the still-held keys until they are released.
+        _controller.SessionStopRequested += id => _hotkeys!.StopSession(id);
 
         // Ends a session whose key-up never arrives (Ctrl+Alt+Del, UAC prompt,
         // elevated window) so the microphone cannot stay open; off the hook thread.
@@ -85,21 +130,77 @@ public partial class App : Application
         Microsoft.Win32.SystemEvents.SessionSwitch += OnSessionSwitch;
         Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
+        bool hookInstalled = true;
         try
         {
             _hook.Start();
         }
         catch (Exception ex)
         {
+            hookInstalled = false;
             Logger.Error("Keyboard hook failed to install", ex);
-            MessageBox.Show("WinDictate could not register the global hotkey. " +
-                "Antivirus or group policy may block low-level keyboard hooks.\n\n" + ex.Message,
+            MessageBox.Show("WinDictate could not register its keyboard shortcut, so dictation will not start. " +
+                "Security software or a group policy may block low-level keyboard hooks.\n\n" + ex.Message,
                 "WinDictate", MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
+        ListenForExitRequests();
         SetupTray();
-        Logger.Info($"Ready. Hotkey = {_hotkeys.ActiveHotkeyText}");
+        if (!hookInstalled) OnStatus("Shortcut unavailable");
+        Logger.Info($"Ready. Hotkey = {_hotkeys.ActiveHotkeyText}, hook {(hookInstalled ? "installed" : "NOT installed")}");
     }
+
+    /// <summary>
+    /// Run as <c>WinDictate.exe --exit</c>: asks a running copy to exit cleanly
+    /// and waits up to 10 seconds for it to finish.
+    /// </summary>
+    /// <returns>True when no copy is running any more.</returns>
+    private static bool AskRunningCopyToExit()
+    {
+        if (EventWaitHandle.TryOpenExisting(ExitSignalName, out EventWaitHandle? signal))
+        {
+            using (signal) signal.Set();
+        }
+        var clock = Stopwatch.StartNew();
+        while (clock.Elapsed < TimeSpan.FromSeconds(10))
+        {
+            if (!Mutex.TryOpenExisting(SingleInstanceName, out Mutex? running)) return true;
+            running.Dispose();
+            Thread.Sleep(100);
+        }
+        return false;
+    }
+
+    private void ListenForExitRequests()
+    {
+        try
+        {
+            _exitSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ExitSignalName);
+            _exitWait = ThreadPool.RegisterWaitForSingleObject(_exitSignal, (_, _) =>
+                Dispatcher.BeginInvoke(() =>
+                {
+                    Logger.Info($"Exit requested ({ExitArgument})");
+                    Shutdown();
+                }), null, Timeout.Infinite, executeOnlyOnce: true);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Could not listen for exit requests: {ex.GetType().Name}");
+        }
+    }
+
+    /// <summary>The model is missing or not the approved file: nothing can work, so say so and exit.</summary>
+    private void OnModelUnavailable(ModelCheck check, string message)
+    {
+        _modelProblem = check;
+        MessageBox.Show("WinDictate cannot start dictation.\n\n" + message +
+            "\n\nAsk IT to reinstall WinDictate Restricted Pilot. Expected file: models\\" + PilotModel.FileName +
+            " (SHA-256 " + PilotModel.Sha256 + ").", "WinDictate", MessageBoxButton.OK, MessageBoxImage.Error);
+        Shutdown(3);
+    }
+
+    private ModelCheck? ModelState =>
+        _modelProblem ?? (_transcriber?.IsReady == true ? ModelCheck.Ok : null);
 
     private void SetupTray()
     {
@@ -107,11 +208,11 @@ public partial class App : Application
         _busyIcon = IconFactory.Create(true);
 
         var menu = new ContextMenuStrip();
-        var header = new ToolStripMenuItem($"WinDictate v{Logger.AppVersion}") { Enabled = false };
+        var header = new ToolStripMenuItem($"{BuildInfo.Product} {BuildInfo.Version}") { Enabled = false };
         menu.Items.Add(header);
         menu.Items.Add(new ToolStripSeparator());
 
-        var hotkeyInfo = new ToolStripMenuItem($"Hold {_hotkeys!.ActiveHotkeyText} to dictate") { Enabled = false };
+        var hotkeyInfo = new ToolStripMenuItem(HotkeyHint()) { Enabled = false };
         menu.Items.Add(hotkeyInfo);
 
         var enabledItem = new ToolStripMenuItem("Enabled") { Checked = true, CheckOnClick = true };
@@ -122,11 +223,26 @@ public partial class App : Application
         };
         menu.Items.Add(enabledItem);
 
+        // For a paste that went nowhere (the cursor was not in a text box): the last
+        // dictation stays in memory for two minutes and can be copied from here.
+        var copyLastItem = new ToolStripMenuItem("Copy last dictation");
+        copyLastItem.Click += async (_, _) =>
+        {
+            if (_controller == null || !await _controller.CopyLastDictationAsync())
+                Logger.Info("Copy last dictation: nothing to copy");
+        };
+        menu.Items.Add(copyLastItem);
+        menu.Opening += (_, _) => copyLastItem.Enabled = _controller?.CanCopyLastDictation == true;
+
         menu.Items.Add(new ToolStripSeparator());
 
         var settingsItem = new ToolStripMenuItem("Settings…");
         settingsItem.Click += (_, _) => OpenSettings(hotkeyInfo);
         menu.Items.Add(settingsItem);
+
+        var aboutItem = new ToolStripMenuItem("About…");
+        aboutItem.Click += (_, _) => AboutWindow.ShowSingle(ModelState, _hotkeys!.ActiveHotkeyText);
+        menu.Items.Add(aboutItem);
 
         var logItem = new ToolStripMenuItem("Open log");
         logItem.Click += (_, _) => OpenFile(Logger.LogPath);
@@ -134,9 +250,9 @@ public partial class App : Application
 
         menu.Items.Add(new ToolStripSeparator());
 
-        var quitItem = new ToolStripMenuItem("Quit");
-        quitItem.Click += (_, _) => Shutdown();
-        menu.Items.Add(quitItem);
+        var exitItem = new ToolStripMenuItem("Exit");
+        exitItem.Click += (_, _) => Shutdown();
+        menu.Items.Add(exitItem);
 
         _tray = new NotifyIcon
         {
@@ -149,19 +265,21 @@ public partial class App : Application
         if (_lastStatus != null) OnStatus(_lastStatus); // a status reported before the tray existed
     }
 
+    private string HotkeyHint() => $"Hold {_hotkeys!.ActiveHotkeyText} to dictate · Esc cancels";
+
     private void OpenSettings(ToolStripMenuItem hotkeyInfo)
     {
         var existing = Windows.OfType<SettingsWindow>().FirstOrDefault();
         if (existing != null) { existing.Activate(); return; }
 
-        var win = new SettingsWindow(_settings);
+        var win = new SettingsWindow(_settings, ModelState);
         win.Saved += () =>
         {
             _hotkeys!.Reconfigure(_settings.Hotkey);
-            hotkeyInfo.Text = $"Hold {_hotkeys.ActiveHotkeyText} to dictate";
+            hotkeyInfo.Text = HotkeyHint();
             _controller!.UpdateSettings(_settings);
             _indicators!.UseStyle(IndicatorFactory.ParseStyle(_settings.Indicator));
-            Logger.Info($"Settings updated. Hotkey = {_hotkeys.ActiveHotkeyText}, model = {_settings.Model}");
+            Logger.Info($"Settings updated. Hotkey = {_hotkeys.ActiveHotkeyText}, insert = {_settings.InsertMode}, indicator = {_settings.Indicator}");
         };
         win.Show();
         win.Activate();
@@ -215,7 +333,6 @@ public partial class App : Application
         _hotkeys?.Reset();
     }
 
-    private bool _downloadNotified;
     private string? _lastStatus; // UI thread only
 
     private void OnStatus(string status)
@@ -226,17 +343,8 @@ public partial class App : Application
             if (_tray == null) return;
             var text = $"WinDictate - {status}";
             _tray.Text = text.Length > 63 ? text[..63] : text;
-            bool busy = status is "Listening…" or "Transcribing…" or "Cleaning up…" or "Inserting…"
-                        || status.StartsWith("Downloading", StringComparison.Ordinal);
+            bool busy = status is "Listening…" or "Transcribing…" or "Inserting…" or "Loading speech model…";
             _tray.Icon = busy ? _busyIcon : _idleIcon;
-
-            if (!_downloadNotified && status.StartsWith("Downloading", StringComparison.Ordinal))
-            {
-                _downloadNotified = true;
-                _tray.ShowBalloonTip(5000, "WinDictate",
-                    "Downloading the speech model (one time). Dictation will be ready in a few minutes.",
-                    ToolTipIcon.Info);
-            }
         });
     }
 
@@ -249,19 +357,21 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            Logger.Warn("Could not open file: " + ex.Message);
+            Logger.Warn("Could not open file: " + ex.GetType().Name);
         }
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        Logger.Info("Shutting down");
+        if (_singleInstance != null) Logger.Info("Shutting down");
         Microsoft.Win32.SystemEvents.SessionSwitch -= OnSessionSwitch;
         Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        _exitWait?.Unregister(null);
+        _exitSignal?.Dispose();
         if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
         _watchdog?.Dispose();
         _hook?.Dispose();
-        _controller?.Dispose();
+        _controller?.Dispose(); // also removes undelivered text from the clipboard
         _indicators?.Dispose();
         _idleIcon?.Dispose();
         _busyIcon?.Dispose();

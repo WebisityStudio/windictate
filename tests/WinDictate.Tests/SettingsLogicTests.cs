@@ -1,43 +1,13 @@
 using WinDictate.Core;
 using WinDictate.UI;
+using WinDictate.UI.Indicators;
 using Xunit;
 
 namespace WinDictate.Tests;
 
-/// <summary>The wording and small decisions behind the Settings window.</summary>
+/// <summary>The wording and small decisions behind the Settings window, the pilot notice and the indicator's target name.</summary>
 public sealed class SettingsLogicTests
 {
-    [Theory]
-    [InlineData("base.en", "Fast")]
-    [InlineData("small.en", "Balanced")]
-    [InlineData("SMALL.EN", "Balanced")]
-    [InlineData("medium.en", "Accurate")]
-    public void ThePlainQualityChoices_StandForOneModelEach(string model, string quality)
-    {
-        Assert.Equal(quality, SettingsLogic.QualityOf(model).ToString());
-        Assert.Equal(model.ToLowerInvariant(), SettingsLogic.ModelFor(SettingsLogic.QualityOf(model)!.Value));
-    }
-
-    [Theory]
-    [InlineData("tiny.en")]
-    [InlineData("large-v3-turbo")]
-    [InlineData("my-own-model")]
-    [InlineData("")]
-    [InlineData(null)]
-    public void OtherModels_AreNoneOfTheThreeChoices(string? model) =>
-        Assert.Null(SettingsLogic.QualityOf(model));
-
-    [Fact]
-    public void QualityLine_SaysWhatTheChoiceMeans_AndWarnsOfADownload()
-    {
-        Assert.Equal("Balanced suits most laptops", SettingsLogic.QualityLine("small.en", downloaded: true));
-        Assert.Equal("Balanced suits most laptops. Downloads once, about 466 MB", SettingsLogic.QualityLine("small.en", downloaded: false));
-        Assert.Equal("Using tiny.en, chosen under Advanced", SettingsLogic.QualityLine("tiny.en", downloaded: true));
-        Assert.Equal("Using my-own-model, chosen under Advanced. Downloads once on first use", SettingsLogic.QualityLine("my-own-model", downloaded: false));
-        Assert.Equal("On this PC. Works with no internet", SettingsLogic.ModelLine("medium.en", downloaded: true));
-        Assert.Equal("Downloads once, about 1.5 GB", SettingsLogic.ModelLine("medium.en", downloaded: false));
-    }
-
     [Theory]
     [InlineData("Ctrl+Alt", new[] { "Ctrl", "Alt" })]
     [InlineData("Ctrl + Shift", new[] { "Ctrl", "Shift" })]
@@ -48,25 +18,24 @@ public sealed class SettingsLogicTests
         Assert.Equal(keys, SettingsLogic.HotkeyKeys(hotkey));
 
     [Fact]
-    public void StatusLine_OnlyClaimsEverythingStaysOnThePc_WhenItDoes()
+    public void StatusLine_SaysEverythingStaysOnThePc_AndNamesAModelProblem()
     {
-        var ready = SettingsLogic.StatusLine(modelDownloaded: true, cleanupOn: false, cleanupUrl: "https://api.openai.com/v1");
+        var ready = SettingsLogic.StatusLine(ModelCheck.Ok);
         Assert.True(ready.AllGood);
         Assert.Equal("Ready. Everything stays on this PC.", ready.Text);
 
-        var cleanup = SettingsLogic.StatusLine(modelDownloaded: true, cleanupOn: true, cleanupUrl: "https://api.openai.com/v1");
-        Assert.False(cleanup.AllGood);
-        Assert.Equal("AI cleanup is on: text is sent to api.openai.com", cleanup.Text);
+        Assert.True(SettingsLogic.StatusLine(null).AllGood); // still checking
+        Assert.Contains("Everything stays on this PC", SettingsLogic.StatusLine(null).Text);
 
-        var odd = SettingsLogic.StatusLine(modelDownloaded: true, cleanupOn: true, cleanupUrl: "not a url");
-        Assert.Equal("AI cleanup is on: text is sent to the cleanup service", odd.Text);
+        var missing = SettingsLogic.StatusLine(ModelCheck.Missing);
+        Assert.False(missing.AllGood);
+        Assert.Equal("Speech model missing: reinstall WinDictate", missing.Text);
 
-        // Cleanup switched on but with no address does nothing, so nothing leaves the PC.
-        Assert.True(SettingsLogic.StatusLine(true, cleanupOn: true, cleanupUrl: "  ").AllGood);
-
-        var noModel = SettingsLogic.StatusLine(modelDownloaded: false, cleanupOn: false, cleanupUrl: "");
-        Assert.False(noModel.AllGood);
-        Assert.Equal("The speech model downloads on first use", noModel.Text);
+        foreach (var broken in new[] { ModelCheck.WrongHash, ModelCheck.WrongSize, ModelCheck.Unreadable })
+        {
+            Assert.False(SettingsLogic.StatusLine(broken).AllGood);
+            Assert.Contains("reinstall", SettingsLogic.StatusLine(broken).Text);
+        }
     }
 
     [Fact]
@@ -83,32 +52,30 @@ public sealed class SettingsLogicTests
     }
 
     [Fact]
-    public void StartWithWindows_WritesTheProgramPathInQuotes()
+    public void PilotNotice_IsWordForWordTheApprovedText()
     {
-        Assert.Equal("\"C:\\Tools\\Win Dictate\\WinDictate.exe\"", AutoStartRules.RunCommand("C:\\Tools\\Win Dictate\\WinDictate.exe"));
-        Assert.Equal("\"C:\\Tools\\WinDictate.exe\"", AutoStartRules.RunCommand("\"C:\\Tools\\WinDictate.exe\""));
+        Assert.Equal(
+            "This pilot tool is intended for post-event dictation and drafting. " +
+            "Do not use it to record live conversations, calls or meetings. " +
+            "Review all transcribed text before saving, sending or submitting it. " +
+            "Speech recognition may misinterpret names, numbers and specialist terminology.",
+            PilotNotice.Text);
+        Assert.Contains("Ctrl+Alt", PilotNotice.HowTo("Ctrl+Alt"));
+        Assert.Contains("Esc", PilotNotice.HowTo("Ctrl+Alt")); // the cancel route is stated
     }
 
     [Theory]
-    [InlineData("\"C:\\Tools\\WinDictate.exe\"", true)]
-    [InlineData("\"c:\\tools\\windictate.EXE\"", true)]           // Windows paths ignore case
-    [InlineData("C:\\Tools\\WinDictate.exe", true)]               // written without quotes
-    [InlineData("\"C:\\Tools\\WinDictate.exe\" --minimised", true)]
-    [InlineData("\"C:\\Old place\\WinDictate.exe\"", false)]      // a copy somewhere else
-    [InlineData("\"C:\\Tools\\Other.exe\"", false)]
-    [InlineData("", false)]
-    [InlineData(null, false)]
-    public void StartWithWindows_CountsOnlyAnEntryForThisCopyOfTheApp(string? command, bool expected) =>
-        Assert.Equal(expected, AutoStartRules.RunCommandMatches(command, "C:\\Tools\\WinDictate.exe"));
-
-    [Fact]
-    public void StartWithWindows_RespectsBeingSwitchedOffInTaskManager()
-    {
-        Assert.False(AutoStartRules.IsSwitchedOffInWindows(null));
-        Assert.False(AutoStartRules.IsSwitchedOffInWindows(Array.Empty<byte>()));
-        Assert.False(AutoStartRules.IsSwitchedOffInWindows(new byte[] { 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }));
-        Assert.True(AutoStartRules.IsSwitchedOffInWindows(new byte[] { 0x03, 0, 0, 0, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x01 }));
-        Assert.False(AutoStartRules.IsSwitchedOffInWindows(new byte[] { 0x06 }));
-        Assert.True(AutoStartRules.IsSwitchedOffInWindows(new byte[] { 0x07 }));
-    }
+    [InlineData("Microsoft Outlook", "Microsoft Office", "OUTLOOK", "Outlook")]
+    [InlineData("Microsoft Word", null, "WINWORD", "Word")]
+    [InlineData("Microsoft Edge", "Microsoft Edge", "msedge", "Edge")]
+    [InlineData("Microsoft Teams", null, "ms-teams", "Teams")]
+    [InlineData("Microsoft® Excel®", null, "EXCEL", "Excel")]
+    [InlineData("Notepad", null, "notepad", "Notepad")]
+    [InlineData("Windows Explorer", null, "explorer", "Explorer")]
+    [InlineData("", "", "olk", "olk")]
+    [InlineData(null, "Some Product", "x", "Some Product")]
+    [InlineData("A description that is far too long for the pill", null, "x", "A description that is…")]
+    [InlineData(null, null, null, "")]
+    public void TargetApp_GetsAShortFriendlyName(string? description, string? product, string? file, string expected) =>
+        Assert.Equal(expected, TargetApp.Friendly(description, product, file));
 }

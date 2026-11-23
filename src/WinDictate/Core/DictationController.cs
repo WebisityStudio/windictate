@@ -28,6 +28,13 @@ public sealed record DictationTimings
     /// later dictations leave the clipboard alone for this long (see <see cref="TextInserter"/>).</summary>
     public int RecoveryProtectMs { get; init; } = TextInserter.DefaultProtectMs;
 
+    /// <summary>...and it is removed from the clipboard this long after the user was told.</summary>
+    public int RecoveryClearMs { get; init; } = TextInserter.DefaultClearMs;
+
+    /// <summary>How long the last inserted dictation can still be copied from the tray
+    /// menu (it is kept in memory only, then forgotten).</summary>
+    public int LastDictationKeepMs { get; init; } = 120_000;
+
     /// <summary>How long ordinary results stay up, and notices the user must read.</summary>
     public int FlashHoldMs { get; init; } = 700;
     public int NoticeHoldMs { get; init; } = 2500;
@@ -35,7 +42,9 @@ public sealed record DictationTimings
 
 /// <summary>
 /// Orchestrates dictation: hotkey held -> record -> (release) -> transcribe
-/// locally -> optional cleanup -> insert.
+/// locally -> insert. Nothing is sent anywhere: there is no cleanup service and
+/// no transcript history in this build, and audio lives in memory only (the
+/// buffers are zeroed once a dictation is finished with).
 ///
 /// Recording is decoupled from processing, so a new recording can start while
 /// earlier ones are still being transcribed. Finished recordings enter a
@@ -60,9 +69,13 @@ public sealed class DictationController : IDisposable
     /// <summary>Tray status text; raised on any thread.</summary>
     public event Action<string>? StatusChanged;
 
-    /// <summary>The recording time limit was reached for this hotkey session id;
-    /// the app asks the hotkey monitor to stop it.</summary>
-    public event Action<long>? MaxDurationReached;
+    /// <summary>This hotkey session must end now (the recording time limit was reached,
+    /// or the microphone was lost); the app asks the hotkey monitor to stop it.</summary>
+    public event Action<long>? SessionStopRequested;
+
+    /// <summary>The speech model cannot be used (missing, damaged or not the approved file).
+    /// Raised once, on a worker thread, with what the check found and a message for the user.</summary>
+    public event Action<ModelCheck, string>? ModelUnavailable;
 
     private const int OverlayFadeMs = 350; // the indicator's fade-out after a notice
 
@@ -70,7 +83,6 @@ public sealed class DictationController : IDisposable
     private readonly IDictationPlatform _platform;
     private readonly ISpeechToText _speech;
     private readonly TextInserter _inserter;
-    private readonly Func<string, CleanupSettings, Task<string>> _cleanup;
     private readonly DictationTimings _timings;
     private volatile AppSettings _settings; // private snapshot; replaced, never mutated
 
@@ -84,6 +96,9 @@ public sealed class DictationController : IDisposable
     private int _contextEpoch;        // bumped when the workstation locks or the system suspends
     private bool _locked;
     private bool _suspended;
+    private string? _lastText;        // the last inserted dictation, memory only, for "Copy last dictation"
+    private long _lastTextUntil;      // ...available until this tick count
+    private int _modelProblemRaised;
 
     // Stage one receives each ended session's "finish recording" task in the
     // order spoken; stage two receives transcribed dictations in the same order.
@@ -101,7 +116,6 @@ public sealed class DictationController : IDisposable
         IDictationPlatform platform,
         ISpeechToText speech,
         ITextTarget textTarget,
-        Func<string, CleanupSettings, Task<string>>? cleanup = null,
         DictationTimings? timings = null)
     {
         _settings = settings.Clone();
@@ -109,8 +123,7 @@ public sealed class DictationController : IDisposable
         _platform = platform;
         _speech = speech;
         _timings = timings ?? new DictationTimings();
-        _inserter = new TextInserter(textTarget, protectMs: _timings.RecoveryProtectMs);
-        _cleanup = cleanup ?? CleanupService.CleanAsync;
+        _inserter = new TextInserter(textTarget, protectMs: _timings.RecoveryProtectMs, clearMs: _timings.RecoveryClearMs);
         _transcribeLoop = Task.Run(() => TranscribeLoopAsync(_shutdown.Token));
         _insertLoop = Task.Run(() => InsertLoopAsync(_shutdown.Token));
     }
@@ -118,11 +131,7 @@ public sealed class DictationController : IDisposable
     /// <summary>Starts loading the model in the background. Call after subscribing to <see cref="StatusChanged"/>.</summary>
     public void Start() => StartWarmUp();
 
-    public void UpdateSettings(AppSettings settings)
-    {
-        _settings = settings.Clone();
-        StartWarmUp();
-    }
+    public void UpdateSettings(AppSettings settings) => _settings = settings.Clone();
 
     /// <summary>
     /// The workstation locked or disconnected (true), or is back (false). While
@@ -153,10 +162,7 @@ public sealed class DictationController : IDisposable
 
     // ----- Model warm-up (thread pool: the UI thread must never wait for it) -----
 
-    /// <summary>
-    /// Downloads/loads the model on the thread pool. Overlapping calls queue on
-    /// the transcriber's gate, so a model change is never skipped.
-    /// </summary>
+    /// <summary>Checks and loads the fixed model on the thread pool.</summary>
     private void StartWarmUp() => _ = Task.Run(WarmUpModelAsync);
 
     private async Task WarmUpModelAsync()
@@ -164,10 +170,15 @@ public sealed class DictationController : IDisposable
         try
         {
             var progress = new InlineProgress(s => StatusChanged?.Invoke(s));
-            await _speech.EnsureReadyAsync(_settings.Model, progress, _shutdown.Token).ConfigureAwait(false);
+            await _speech.EnsureReadyAsync(progress, _shutdown.Token).ConfigureAwait(false);
             if (IsIdle()) StatusChanged?.Invoke("Ready");
         }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
+        catch (ModelUnavailableException ex)
+        {
+            StatusChanged?.Invoke("Speech model problem");
+            if (Interlocked.Exchange(ref _modelProblemRaised, 1) == 0) ModelUnavailable?.Invoke(ex.Check, ex.Message);
+        }
         catch (Exception ex)
         {
             Logger.Error("Model warm-up failed", ex);
@@ -209,6 +220,7 @@ public sealed class DictationController : IDisposable
             recorder = _platform.CreateRecorder();
             recorder.LevelChanged += peak => OnLevel(session, peak);
             recorder.CaptureStarted += () => OnCaptureStarted(session);
+            recorder.CaptureLost += () => OnCaptureLost(session);
             recorder.Start(_platform.ResolveMicrophone(session.Settings));
             return recorder; // stopped by FinishRecordingAsync (or Abandon), whenever the session ends
         }
@@ -282,7 +294,22 @@ public sealed class DictationController : IDisposable
         Logger.Warn($"Recording hit the {session.Settings.MaxRecordSeconds}s limit, stopping");
         // The hotkey monitor ends the session (Stopped) and ignores the still-held
         // keys; its SessionEnded event then finishes this session as usual.
-        MaxDurationReached?.Invoke(session.HotkeyId);
+        SessionStopRequested?.Invoke(session.HotkeyId);
+    }
+
+    /// <summary>
+    /// The microphone was unplugged or stopped delivering audio mid-recording.
+    /// The session ends straight away, so the indicator never shows "listening"
+    /// for a microphone that is no longer capturing; its audio is discarded.
+    /// </summary>
+    private void OnCaptureLost(Session session)
+    {
+        lock (_lock)
+        {
+            if (session.Ended) return;
+            session.MicLost = true;
+        }
+        SessionStopRequested?.Invoke(session.HotkeyId);
     }
 
     // ----- Hotkey released or cancelled (hook, watchdog, timer or UI thread) -----
@@ -356,13 +383,29 @@ public sealed class DictationController : IDisposable
 
         RecordingResult rec;
         try { rec = recorder.Stop(); }
+        catch (Exception ex)
+        {
+            Logger.Error($"Stopping the microphone failed: {ex.GetType().Name} 0x{ex.HResult:X8}");
+            SessionFeedback("Microphone disconnected");
+            return null;
+        }
         finally { recorder.Dispose(); }
 
+        bool micLost;
+        lock (_lock) micLost = session.MicLost;
+        if (micLost)
+        {
+            // Unplugged or silent mid-sentence: the audio is incomplete, so it is not used.
+            Forget(rec);
+            SessionFeedback("Microphone disconnected");
+            return null;
+        }
         if (session.EndReason == SessionEndReason.KeysLost)
         {
             // The release never reached the hook (secure desktop, UAC prompt,
             // elevated window): nothing heard since then is meant for insertion.
             Logger.Warn("Dictation cancelled: the hotkey was no longer held but its release never arrived");
+            Forget(rec);
             SessionFeedback("Cancelled · hotkey interrupted");
             return null;
         }
@@ -370,6 +413,7 @@ public sealed class DictationController : IDisposable
         {
             // Released before the microphone delivered any audio (a slow Bluetooth
             // headset): there is nothing to transcribe, so say why.
+            Forget(rec);
             if (deliberate && session.EndReason.KeepsAudio()) SessionFeedback("Microphone not ready");
             else SessionDone();
             return null;
@@ -378,6 +422,7 @@ public sealed class DictationController : IDisposable
         {
             // Quick taps and AltGr-style cancels vanish silently; a deliberate
             // cancel of a real recording gets feedback.
+            Forget(rec);
             if (session.EndReason == SessionEndReason.Cancelled && deliberate) SessionFeedback("Cancelled");
             else SessionDone();
             return null;
@@ -386,6 +431,7 @@ public sealed class DictationController : IDisposable
         // long clip with pauses used to fail the old whole-clip average.
         if (rec.DurationSeconds < 0.3 || !SpeechGate.HasVoice(rec, settings))
         {
+            Forget(rec);
             SessionFeedback("No speech detected");
             return null;
         }
@@ -394,7 +440,10 @@ public sealed class DictationController : IDisposable
         return new Job(rec, settings, session.Epoch, session.Target, session.StartedAt);
     }
 
-    // ----- Stage one: transcription and cleanup, one at a time, in order -----
+    /// <summary>Overwrites a recording's audio with zeros once it is no longer needed.</summary>
+    private static void Forget(RecordingResult recording) => Array.Clear(recording.WavBytes);
+
+    // ----- Stage one: transcription, one at a time, in order -----
 
     private async Task TranscribeLoopAsync(CancellationToken ct)
     {
@@ -420,11 +469,22 @@ public sealed class DictationController : IDisposable
                 {
                     return;
                 }
+                catch (ModelUnavailableException ex)
+                {
+                    PipelineNotice("Speech model problem");
+                    if (Interlocked.Exchange(ref _modelProblemRaised, 1) == 0) ModelUnavailable?.Invoke(ex.Check, ex.Message);
+                    job = null;
+                }
                 catch (Exception ex)
                 {
                     Logger.Error("Dictation pipeline failed", ex);
                     PipelineNotice("Error, see log");
                     job = null;
+                }
+                finally
+                {
+                    // The audio has been transcribed (or failed): it is not needed again.
+                    if (finishing.IsCompletedSuccessfully && finishing.Result is { } done) Forget(done.Recording);
                 }
 
                 if (job == null || !_transcribed.Writer.TryWrite(job))
@@ -438,11 +498,9 @@ public sealed class DictationController : IDisposable
     {
         if (!_speech.IsReady)
         {
-            // First use (or every load so far failed). A model change is loaded by the
-            // warm-up instead: if that fails, for example offline, dictation keeps
-            // using the model that is already loaded rather than failing each time.
+            // The warm-up has not finished yet (or it failed): load here, with progress.
             PipelineStatus("Loading speech model…");
-            await _speech.EnsureReadyAsync(_settings.Model, new InlineProgress(PipelineStatus), ct).ConfigureAwait(false);
+            await _speech.EnsureReadyAsync(new InlineProgress(PipelineStatus), ct).ConfigureAwait(false);
         }
         PipelineStatus("Transcribing…");
 
@@ -450,13 +508,7 @@ public sealed class DictationController : IDisposable
         using (var wav = new MemoryStream(job.Recording.WavBytes, writable: false))
             text = await _speech.TranscribeAsync(wav, job.Settings, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(text)) return "";
-
-        var cleanup = job.Settings.Cleanup;
-        if (cleanup.Enabled && !string.IsNullOrWhiteSpace(cleanup.BaseUrl))
-        {
-            PipelineStatus("Cleaning up…");
-            text = await _cleanup(text, cleanup).ConfigureAwait(false);
-        }
+        // The raw local transcript is used directly: there is no cleanup step in this build.
         return TranscriptText.ForInsertion(text, job.Settings.AddTrailingSpace);
     }
 
@@ -559,21 +611,23 @@ public sealed class DictationController : IDisposable
 
     private void Report(Job job, InsertResult result)
     {
+        // Counts and durations only: the text itself is never logged or stored.
         int words = job.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
         string counted = words == 1 ? "1 word" : $"{words} words";
         double seconds = job.Recording.DurationSeconds;
-        if (job.Settings.LogTranscripts) AppendHistory(job.Text, seconds);
 
         switch (result.Outcome)
         {
             case InsertOutcome.Inserted:
                 bool typedInstead = result.Typed && !InsertOptions.From(job.Settings).TypeMode;
                 Logger.Info($"Dictated {seconds:F1}s of audio into {words} words" +
-                            (typedInstead ? " (typed instead of pasted)" : "") +
+                            (result.TypedToSpareClipboard ? " (typed: the clipboard held other content)"
+                             : typedInstead ? " (typed instead of pasted)" : "") +
                             (result.ClipboardNotRestored ? "; the previous clipboard could not be restored" : ""));
+                RememberLast(job.Text);
+                if (result.ClipboardNotRestored) ScheduleRecoveryClear(); // the transcript is still there: clear it later
                 PipelineFlash(result.EarlierTextKept ? $"Inserted {counted} · earlier dictation still in clipboard"
                             : result.ClipboardNotRestored ? $"Inserted {counted} · clipboard not restored"
-                            : result.OnClipboard ? $"Inserted {counted} · in clipboard"
                             : $"Inserted {counted}", true);
                 break;
             case InsertOutcome.CopiedOnly:
@@ -596,18 +650,6 @@ public sealed class DictationController : IDisposable
         }
     }
 
-    private static void AppendHistory(string text, double seconds)
-    {
-        try
-        {
-            var line = $"{DateTime.Now:o}\t{seconds:F1}s\t{text.Trim().Replace('\t', ' ').Replace('\n', ' ')}";
-            File.AppendAllText(Path.Combine(AppSettings.DataDir, "transcription-history.tsv"), line + Environment.NewLine);
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn("Could not write history: " + ex.Message);
-        }
-    }
 
     private void ItemDone()
     {
@@ -681,8 +723,75 @@ public sealed class DictationController : IDisposable
     {
         _overlay.Flash(text, false, _timings.NoticeHoldMs);
         _noticeUntil = Environment.TickCount64 + _timings.NoticeHoldMs + OverlayFadeMs;
-        // The user's time to paste the waiting text starts when they are told.
-        if (recovery) _inserter.RecoveryAnnounced();
+        // The user's time to paste the waiting text starts when they are told,
+        // and the text is removed from the clipboard when that time is up.
+        if (recovery)
+        {
+            _inserter.RecoveryAnnounced();
+            ScheduleRecoveryClear();
+        }
+    }
+
+    // ----- Undelivered text and the last dictation (memory only, time-limited) -----
+
+    /// <summary>Removes undelivered text from the clipboard once its time is up (the inserter decides whether it is).</summary>
+    private void ScheduleRecoveryClear()
+    {
+        _ = Task.Delay(_timings.RecoveryClearMs + 50, _shutdown.Token).ContinueWith(async t =>
+        {
+            if (t.IsCanceled) return;
+            try { await _inserter.ClearExpiredRecoveryAsync().ConfigureAwait(false); }
+            catch (Exception ex) { Logger.Warn($"Clearing an undelivered dictation failed: {ex.GetType().Name}"); }
+        }, TaskScheduler.Default);
+    }
+
+    /// <summary>Keeps the last inserted dictation in memory for a short while, for "Copy last dictation".</summary>
+    private void RememberLast(string text)
+    {
+        long until = Environment.TickCount64 + _timings.LastDictationKeepMs;
+        lock (_lock)
+        {
+            _lastText = text;
+            _lastTextUntil = until;
+        }
+        _ = Task.Delay(_timings.LastDictationKeepMs + 50, _shutdown.Token).ContinueWith(_ =>
+        {
+            lock (_lock)
+            {
+                if (_lastText != null && Environment.TickCount64 >= _lastTextUntil) _lastText = null;
+            }
+        }, TaskScheduler.Default);
+    }
+
+    /// <summary>True while the last inserted dictation can still be copied.</summary>
+    public bool CanCopyLastDictation
+    {
+        get
+        {
+            lock (_lock) return _lastText != null && Environment.TickCount64 < _lastTextUntil;
+        }
+    }
+
+    /// <summary>
+    /// Puts the last inserted dictation on the clipboard (for when a paste went
+    /// nowhere, for example because the cursor was not in a text box). It is
+    /// removed again like undelivered text.
+    /// </summary>
+    public async Task<bool> CopyLastDictationAsync()
+    {
+        string? text;
+        lock (_lock) text = _lastText != null && Environment.TickCount64 < _lastTextUntil ? _lastText : null;
+        if (text == null) return false;
+        bool copied = await _inserter.OfferAsync(text).ConfigureAwait(false);
+        if (copied)
+        {
+            ScheduleRecoveryClear();
+            lock (_lock)
+            {
+                if (_recording == null) ShowNoticeLocked("Copied · last dictation in clipboard — press Ctrl+V", recovery: false);
+            }
+        }
+        return copied;
     }
 
     /// <summary>Feedback about a session that just ended; dropped if a newer recording already owns the overlay.</summary>
@@ -748,6 +857,13 @@ public sealed class DictationController : IDisposable
         catch (AggregateException) { stopped = true; }
         // Free the model only when no transcription can still be using it.
         if (stopped) _speech.Dispose();
+
+        // Nothing dictated outlives the app: undelivered text still on the
+        // clipboard is removed (briefly waited for, so quitting never hangs),
+        // and the last dictation is forgotten.
+        try { _inserter.ClearRecoveryNowAsync().Wait(TimeSpan.FromSeconds(3)); }
+        catch (AggregateException) { }
+        lock (_lock) _lastText = null;
     }
 
     private enum Readiness { Ready, Recording, KeysHeld, Away, ContextChanged }
@@ -782,6 +898,7 @@ public sealed class DictationController : IDisposable
         public SessionEndReason EndReason;
         public long HeldMs;
         public int Epoch;
+        public bool MicLost;     // the microphone stopped on its own mid-recording
 
         public void DisposeTimers()
         {

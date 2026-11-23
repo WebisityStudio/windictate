@@ -8,6 +8,37 @@ public class TranscriberTests
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(10);
 
     [Fact]
+    public async Task MissingModel_IsReportedClearly_AndNothingIsDownloaded()
+    {
+        string missing = Path.Combine(Path.GetTempPath(), "WinDictate.Tests", Guid.NewGuid().ToString("N"), PilotModel.FileName);
+        using var transcriber = new Transcriber(missing);
+        var problem = await Assert.ThrowsAsync<ModelUnavailableException>(() => transcriber.EnsureReadyAsync(null));
+        Assert.Equal(ModelCheck.Missing, problem.Check);
+        Assert.False(transcriber.IsReady);
+        Assert.False(Directory.Exists(Path.GetDirectoryName(missing)), "nothing may be created or downloaded");
+    }
+
+    [Fact]
+    public async Task ModelThatIsNotTheApprovedFile_IsNotLoaded()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "WinDictate.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string path = Path.Combine(dir, PilotModel.FileName);
+        try
+        {
+            await File.WriteAllTextAsync(path, "not a model");
+            using var transcriber = new Transcriber(path);
+            var problem = await Assert.ThrowsAsync<ModelUnavailableException>(() => transcriber.EnsureReadyAsync(null));
+            Assert.Equal(ModelCheck.WrongSize, problem.Check);
+            Assert.Contains("checksum", problem.Message);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task TranscribeWithoutModel_Throws_AndReleasesTheGate()
     {
         using var transcriber = new Transcriber();
