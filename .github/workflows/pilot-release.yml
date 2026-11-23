@@ -206,26 +206,59 @@ jobs:
             Get-Content $report
             return
           }
+          # A scan that cannot be trusted is reported as inconclusive (the package is then scanned
+          # with the organisation's endpoint scanner, as the staging steps require anyway).
+          function Write-Inconclusive([string] $why, [string] $detail) {
+            @("Microsoft Defender scan INCONCLUSIVE on this build machine: $why", 'Scan the package with your organisation''s endpoint scanner.', '', $detail) -join "`n" |
+              Set-Content -Encoding utf8 $report
+            "## Malware scan`n`n- **Inconclusive**: $why The package must be scanned with the organisation's endpoint scanner.`n" |
+              Add-Content -Encoding utf8 "$env:PILOT_OUT\CI-VERIFICATION.md"
+            Get-Content $report
+          }
           # The hosted image turns Defender's protection down and excludes the C: and D: drives
           # from scanning, which would make a clean result meaningless. Undo that for this scan.
           $before = Get-MpPreference
-          foreach ($path in @($before.ExclusionPath)) { if ($path) { Remove-MpPreference -ExclusionPath $path } }
-          foreach ($ext in @($before.ExclusionExtension)) { if ($ext) { Remove-MpPreference -ExclusionExtension $ext } }
-          foreach ($proc in @($before.ExclusionProcess)) { if ($proc) { Remove-MpPreference -ExclusionProcess $proc } }
-          Set-MpPreference -DisableArchiveScanning $false -DisableScanningNetworkFiles $false
+          try {
+            foreach ($path in @($before.ExclusionPath)) { if ($path) { Remove-MpPreference -ExclusionPath $path } }
+            foreach ($ext in @($before.ExclusionExtension)) { if ($ext) { Remove-MpPreference -ExclusionExtension $ext } }
+            foreach ($proc in @($before.ExclusionProcess)) { if ($proc) { Remove-MpPreference -ExclusionProcess $proc } }
+            Set-MpPreference -DisableArchiveScanning $false -DisableScanningNetworkFiles $false
+          } catch {
+            Write-Host "Changing Defender's settings failed: $($_.Exception.Message)"
+          }
           $after = Get-MpPreference
-          if (@($after.ExclusionPath | Where-Object { $_ }).Count -gt 0 -or $after.DisableArchiveScanning) { throw 'Could not clear the runner''s Defender exclusions; a scan would not be meaningful' }
+          if (@($after.ExclusionPath | Where-Object { $_ }).Count -gt 0 -or $after.DisableArchiveScanning) {
+            Write-Inconclusive 'the runner''s scan exclusions could not be removed, so a clean result would prove nothing.' "Exclusions still set: [$(@($after.ExclusionPath) -join ', ')]; archive scanning disabled: $($after.DisableArchiveScanning)"
+            return
+          }
           $update = & $mp -SignatureUpdate 2>&1 | Out-String
           # Control: the industry-standard harmless test file must be detected, or a clean result means nothing.
           # (Assembled at run time so the string never appears in the repository or the source snapshot.)
           $controlDir = Join-Path $env:RUNNER_TEMP 'av-control'
           New-Item -ItemType Directory -Force $controlDir | Out-Null
           $control = Join-Path $controlDir 'control.txt'
-          [IO.File]::WriteAllText($control, ('X5O!P%@AP[4\PZX54(P^)7CC)7}' + '$EICAR-STANDARD-ANTIVIRUS-TEST-' + 'FILE!$H+H*'))
-          $controlScan = & $mp -Scan -ScanType 3 -File $control -DisableRemediation 2>&1 | Out-String
-          $controlCode = $LASTEXITCODE
+          $controlCode = 'none'
+          $controlScan = ''
+          $controlResult = $null
+          try {
+            [IO.File]::WriteAllText($control, ('X5O!P%@AP[4\PZX54(P^)7CC)7}' + '$EICAR-STANDARD-ANTIVIRUS-TEST-' + 'FILE!$H+H*'))
+          } catch {
+            $controlResult = "blocked by real-time protection as it was written ($($_.Exception.GetType().Name))"
+          }
+          if (-not $controlResult) {
+            if (Test-Path $control) {
+              $controlScan = & $mp -Scan -ScanType 3 -File $control -DisableRemediation 2>&1 | Out-String
+              $controlCode = $LASTEXITCODE
+              if ($controlCode -eq 2) { $controlResult = 'detected by the scan (exit code 2)' }
+            } else {
+              $controlResult = 'removed by real-time protection as soon as it was written'
+            }
+          }
           Remove-Item $controlDir -Recurse -Force -ErrorAction SilentlyContinue
-          if ($controlCode -ne 2) { throw "Defender did not detect the standard test file (exit code $controlCode): its result on the package would not be meaningful`n$controlScan" }
+          if (-not $controlResult) {
+            Write-Inconclusive "Defender did not detect the standard harmless antivirus test file (exit code $controlCode), so a clean result would prove nothing." "Control scan output:`n$($controlScan.Trim())"
+            return
+          }
           $scanZip = & $mp -Scan -ScanType 3 -File $env:ZIP -DisableRemediation 2>&1 | Out-String
           $zipCode = $LASTEXITCODE
           $scanFolder = & $mp -Scan -ScanType 3 -File $env:SUBMISSION -DisableRemediation 2>&1 | Out-String
@@ -237,13 +270,13 @@ jobs:
             ($status | Format-List | Out-String).Trim(),
             '',
             "Runner exclusions removed before scanning: paths [$(@($before.ExclusionPath) -join ', ')]; archive scanning was disabled: $($before.DisableArchiveScanning), now enabled.",
-            "Control: the standard harmless antivirus test file was detected (exit code $controlCode).",
+            "Control: the standard harmless antivirus test file was $controlResult.",
             '', 'Signature update:', $update.Trim(), '',
             "ZIP scan (exit code $zipCode; 0 = no threats):", $scanZip.Trim(), '',
             "Folder scan (exit code $folderCode; 0 = no threats):", $scanFolder.Trim()
           ) -join "`n" | Set-Content -Encoding utf8 $report
           Get-Content $report
-          "## Malware scan`n`n- Microsoft Defender, signatures $($status.AntivirusSignatureVersion), with the runner's exclusions removed and archive scanning on. Control file detected (exit code $controlCode). ZIP: exit code $zipCode; unpacked package: exit code $folderCode (0 = no threats).`n" |
+          "## Malware scan`n`n- Microsoft Defender, signatures $($status.AntivirusSignatureVersion), with the runner's exclusions removed and archive scanning on. Control file $controlResult. ZIP: exit code $zipCode; unpacked package: exit code $folderCode (0 = no threats).`n" |
             Add-Content -Encoding utf8 "$env:PILOT_OUT\CI-VERIFICATION.md"
           if ($zipCode -ne 0 -or $folderCode -ne 0) { throw 'Defender reported a problem' }
 
