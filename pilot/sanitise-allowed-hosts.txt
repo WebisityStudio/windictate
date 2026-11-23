@@ -1,0 +1,19 @@
+# Public hosts that may appear in WinDictate's own documents and source.
+# Reviewed list for the release sanitisation scan (pilot/tools/ReleaseKit/Sanitiser.cs).
+# Third-party licence texts are reported separately and never blocked.
+github.com
+raw.githubusercontent.com
+huggingface.co
+learn.microsoft.com
+aka.ms
+dotnet.microsoft.com
+dot.net
+www.microsoft.com
+support.microsoft.com
+schemas.microsoft.com
+www.nuget.org
+nuget.org
+licenses.nuget.org
+opensource.org
+spdx.org
+cyclonedx.org

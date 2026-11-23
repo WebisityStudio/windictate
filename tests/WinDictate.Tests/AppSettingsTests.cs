@@ -52,11 +52,11 @@ public class AppSettingsTests
     {
         // A file written by a build that had AI cleanup, history and a model choice,
         // including an API key: the pilot ignores those settings and does not write them back.
-        string json = V013SettingsJson.Replace("\"ApiKey\": \"\"", "\"ApiKey\": \"sk-example-not-a-real-key\"");
+        string json = V013SettingsJson.Replace("\"ApiKey\": \"\"", "\"ApiKey\": \"example-key-value\"");
         var settings = AppSettings.Parse(json);
         string saved = AppSettings.Serialize(settings);
 
-        foreach (string gone in new[] { "Cleanup", "ApiKey", "sk-example", "LogTranscripts", "KeepInClipboard", "\"Model\"", "Language" })
+        foreach (string gone in new[] { "Cleanup", "ApiKey", "example-key-value", "LogTranscripts", "KeepInClipboard", "\"Model\"", "Language" })
             Assert.DoesNotContain(gone, saved);
         Assert.Equal(2, settings.MicDeviceIndex); // everything else is kept
     }

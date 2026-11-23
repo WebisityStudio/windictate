@@ -1,131 +1,53 @@
-# WinDictate
+# WinDictate: Restricted Pilot build
 
-[![build](https://github.com/WebisityStudio/windictate/actions/workflows/build.yml/badge.svg)](https://github.com/WebisityStudio/windictate/actions/workflows/build.yml)
+> **This branch (`restricted-pilot-build`) is the restricted pilot edition of WinDictate.** It is the open-source WinDictate with the network-related and retention-related features removed, for a controlled workplace pilot. The general version lives on `main`.
 
-**Local, push-to-talk voice dictation for Windows.** Hold a hotkey anywhere on your
-PC, speak, release - your words are typed into whatever app has focus (Outlook,
-Word, Teams, a CRM field, a browser). Speech-to-text runs **entirely on the
-device** using an on-board Whisper model. No cloud account, no API key, no audio
-leaving the machine.
+**Local, push-to-talk dictation for Windows 11.** Hold **Ctrl+Alt**, speak, let go: the speech is recognised on the PC by a fixed Whisper model, and the text is inserted where the cursor is, in any application. Review it there before saving or sending.
 
-It is built as an internal-friendly alternative to the dictation features in
-commercial apps: the sensitive actions (hotkey, microphone, text insertion) stay
-on the endpoint, and an *optional* cleanup step can route through an
-organisation-approved AI gateway if one is available.
+## What this edition does differently
 
----
+| | Restricted pilot (this branch) | General version (`main`) |
+|---|---|---|
+| Speech recognition | On the PC, one fixed model shipped in the package and checked by SHA-256 at every start | On the PC; choice of models, downloaded on first use |
+| Network | None: the program contains no network code | Model download; optional AI cleanup service |
+| AI cleanup | Removed | Optional, off by default |
+| Transcript history | Removed | Optional, off by default |
+| Clipboard | Always put back after a paste; undelivered text removed after 2 minutes; excluded from clipboard history | Dictation kept on the clipboard by default |
+| Start with Windows | Not offered | Optional |
+| First run | Pilot-use notice to acknowledge | — |
+| Data folder | `%LOCALAPPDATA%\WinDictate` | `%APPDATA%\WinDictate` |
 
-## Why this exists
+## For pilot reviewers and IT
 
-Plenty of people type all day - meeting notes, emails, CRM entries - when they
-could dictate far faster. The built-in Windows dictation is clumsy and the good
-commercial tools send your audio to a vendor cloud, which is a non-starter in a
-regulated environment. WinDictate keeps the whole speech path on the laptop.
+The release is a single package, `WinDictate-Restricted-Pilot-<version>-Submission.zip`. It holds the self-contained program and model, the exact source snapshot, documentation, SBOM, licences, manifest and SHA-256 hashes. Start with its `START-HERE.md`.
 
-## What it does
+The documents are written from templates in [`pilot/docs`](pilot/docs) and [`pilot/compliance`](pilot/compliance), which you can read here:
 
-- **Global hold-to-talk hotkey** (default **Ctrl + Alt**). Hold, speak, release.
-- **Fully local transcription** via [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (through the Whisper.net bindings). Works with no internet once the model is present.
-- **Pastes into the focused app** using the clipboard or, optionally, by simulating keystrokes. By default the transcript **stays on the clipboard** afterwards, so you can paste it again anywhere with Ctrl+V - even if the cursor wasn't in a text box when you released the hotkey. A setting switches this off to restore your previous clipboard instead.
-- **Back-to-back dictation**: start the next dictation while the last one is still being transcribed; results are inserted in the order you spoke them, each followed by a space (a setting turns the space off).
-- **Only types where you started**: if you move to another window (or, in apps that expose it, another field) before a dictation is ready, it is not typed there; it goes to the clipboard instead.
-- **Never drops a dictation silently**: if the text cannot be inserted (focus moved, a key stays held down, or Windows rejects the keystrokes), it is left on the clipboard and a short notice tells you to press Ctrl+V. For the next half minute (or until you copy something else), later dictations are typed rather than pasted, so they do not replace it before you have had time to paste it.
-- **A quiet listening indicator**: a small glass pill above the taskbar with a live waveform, or, if you prefer, just a soft glow along the taskbar edge. It is click-through, never takes focus, appears on the screen you are working on, and shows words only when something needs your attention.
-- **System-tray app** - runs quietly, no main window. Right-click for settings.
-- **Optional AI cleanup** (off by default): fix punctuation, capitalisation and filler words via any OpenAI-compatible endpoint - the public API *or* an internal gateway URL. If it fails or times out, the raw local transcript is used.
-- **Privacy-first defaults**: no audio is ever written to disk; no transcript history unless you switch it on.
+- [Pilot readme](pilot/docs/README-PILOT.md), [user guide](pilot/docs/USER-GUIDE.md)
+- [Installation](pilot/docs/INSTALLATION-INSTRUCTIONS.md), [uninstall](pilot/docs/UNINSTALL-INSTRUCTIONS.md)
+- [Technical architecture](pilot/docs/TECHNICAL-ARCHITECTURE.md), [data flow and privacy](pilot/docs/DATA-FLOW-AND-PRIVACY.md), [security controls](pilot/docs/SECURITY-CONTROLS.md)
+- [UAT test plan](pilot/docs/UAT-TEST-PLAN.md), [known limitations](pilot/docs/KNOWN-LIMITATIONS.md), [support and ownership template](pilot/docs/SUPPORT-AND-OWNERSHIP-TEMPLATE.md)
+- [Operational AI factsheet](pilot/compliance/OPERATIONAL-AI-FACTSHEET.md), [model source, licence and hash](pilot/compliance/MODEL-SOURCE-LICENCE-AND-HASH.md)
 
-## How it works
+## Build the package
 
-```
-Hold Ctrl+Alt
-  -> the listening indicator appears, microphone records (16 kHz mono, in memory only)
-Release Ctrl+Alt
-  -> local Whisper transcribes the audio on-device
-  -> (optional) cleanup model fixes punctuation/formatting
-  -> text is inserted into the focused app
-  -> transcript stays on the clipboard for re-pasting (or the old clipboard is restored, if you prefer)
-```
-
-The keyboard, microphone and insertion all happen locally. Only the optional
-cleanup step can involve a network call, and only if you enable it and provide an
-endpoint.
-
-## Requirements
-
-- **Windows 11** (x64). The speech engine's native runtime (Whisper.net) requires Windows 11 or Windows Server 2022 or newer.
-- **Microsoft Visual C++ Redistributable for Visual Studio 2022 (x64)**, which the speech engine's native library needs. Get it from Microsoft's [latest supported Visual C++ Redistributable downloads](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170#latest-microsoft-visual-c-redistributable-version) page.
-- **A CPU with AVX2** (plus AVX, FMA and F16C). Intel Core and AMD Ryzen processors from the last decade have them; some low-end Celeron, Pentium and Atom chips do not.
-- A microphone, and roughly 0.5-2 GB of disk space for the speech model.
-
-If the tray tooltip says *"Model not ready, check log"* right after start-up even though the model file is present, the Visual C++ Redistributable or the CPU features are the usual cause.
-
-## Install
-
-1. Download `WinDictate-win-x64.zip` from the [Releases](../../releases) page (or the latest CI build under **Actions**).
-2. Unzip anywhere (e.g. `C:\Tools\WinDictate`). It is self-contained - **no .NET install required**.
-3. Run `WinDictate.exe`. A microphone icon appears in the system tray.
-4. On first use it downloads the speech model once (default `small.en`, ~466 MB) into `%APPDATA%\WinDictate\models`. After that it works offline.
-
-> **Air-gapped / no-internet machines:** copy the matching `ggml-<model>.bin`
-> file (e.g. `ggml-small.en.bin`) into `%APPDATA%\WinDictate\models` manually.
-> Models come from the official whisper.cpp repository on Hugging Face. See
-> [docs/QUICKSTART.md](docs/QUICKSTART.md).
-
-## Use
-
-- **Hold Ctrl + Alt**, speak a sentence or two, then **release**. The text appears where your cursor is.
-- Press any other key while holding to **cancel** the current dictation.
-- Right-click the tray icon for **Settings**. The everyday choices are up front in plain words: the listening indicator, *Start with Windows*, the microphone (with a test), speech quality, and what happens to the clipboard and history. The shortcut keys, pasting or typing, which microphone and speech model to use, custom words and the optional cleanup service are under **Advanced**.
-
-## Models
-
-| Model            | Size    | Speed      | Accuracy | Notes                          |
-|------------------|---------|------------|----------|--------------------------------|
-| `tiny.en`        | ~75 MB  | Fastest    | Low      | Very modest hardware           |
-| `base.en`        | ~142 MB | Fast       | OK       | Light laptops                  |
-| `small.en`       | ~466 MB | Balanced   | Good     | **Default / recommended**      |
-| `medium.en`      | ~1.5 GB | Slower     | High     | When accuracy matters          |
-| `large-v3-turbo` | ~1.6 GB | Moderate   | Best     | Strong CPU/GPU                  |
-
-`.en` models are English-only and more accurate for English. For other
-languages, set the language to `auto` in settings and use a non-`.en` model.
-
-## Privacy & enterprise notes
-
-- **Audio** is held in memory only and discarded after transcription - never written to disk.
-- **Transcript history** is off by default. When enabled it is a local TSV file in `%APPDATA%\WinDictate`; nothing leaves the machine.
-- **Cleanup** is opt-in. With it off, WinDictate makes **no network calls at all** (after the one-time model download).
-- **No API keys are required** for the core product. A key is only needed if you point cleanup at an endpoint that requires one.
-- By default the transcript is **kept on the clipboard** after insertion as a safety net (so a dictation is never lost if the focus wasn't a text box). For stricter clipboard hygiene, untick *"Keep transcript on the clipboard afterwards"* in Settings: paste mode then saves your previous clipboard in memory and restores it within a few hundred milliseconds, and its contents are never logged. Only text is restored in that mode: if the clipboard held an image or files, it is cleared after insertion rather than left holding the transcript. Combine it with the "type" insertion mode to avoid the clipboard entirely.
-- Whatever that setting says, a dictation that **could not be inserted** (focus moved to another window or field, keys held for several seconds, keystrokes rejected by Windows, or the workstation locked before it was inserted) is left on the clipboard, and a notice says so, rather than being thrown away or typed into the wrong place.
-
-See [docs/ENTERPRISE.md](docs/ENTERPRISE.md) for a deployment and governance summary
-aimed at IT / security teams.
-
-## Build from source
-
-Requires the .NET 10 SDK.
+Requirements: the .NET SDK pinned in [`global.json`](global.json), Git, and access to nuget.org (and once to huggingface.co for the model, unless you pass a local copy).
 
 ```powershell
-dotnet publish src/WinDictate/WinDictate.csproj -c Release -r win-x64 --self-contained true -o publish/WinDictate
+.\pilot\build-release.ps1 -Output D:\Releases\WinDictate
 ```
 
-Run `publish/WinDictate/WinDictate.exe`.
+On macOS or Linux: `pilot/build-release.sh --out ~/Releases/WinDictate`. See [`pilot/README.md`](pilot/README.md) and [`pilot/docs/BUILD_INSTRUCTIONS.md`](pilot/docs/BUILD_INSTRUCTIONS.md).
 
-`dotnet test` runs the unit tests (hotkey state machine and watchdog, dictation queue, insertion fallbacks, transcript clean-up, speech gate, settings). They target plain .NET 10, so they also run on macOS and Linux. [docs/TESTING.md](docs/TESTING.md) has the manual checks that need a real Windows machine.
+The official build, [`.github/workflows/pilot-release.yml`](.github/workflows/pilot-release.yml), runs on a fresh Windows virtual machine. It builds the package and then tests the packaged program there: smoke tests, offline transcription, a network audit, install, uninstall and reinstall, and a Defender scan.
 
-## Status
+## Development
 
-Early but functional proof of concept (v0.1). Built to be handed to an IT team as
-a starting point, not yet a hardened production release. See
-[docs/ROADMAP.md](docs/ROADMAP.md).
+```bash
+dotnet test tests/WinDictate.Tests          # cross-platform unit tests, including the pilot guard tests
+dotnet test tests/WinDictate.UiSmoke        # Windows only: real windows, clipboard, keyboard
+```
 
 ## Licence
 
-MIT - see [LICENSE](LICENSE).
-
-Speech recognition by [whisper.cpp](https://github.com/ggerganov/whisper.cpp) /
-[Whisper.net](https://github.com/sandrohanea/whisper.net); audio capture by
-[NAudio](https://github.com/naudio/NAudio). WinDictate is not affiliated with
-OpenAI or any model provider.
+MIT. See [LICENSE](LICENSE) and, for bundled components, [`pilot/compliance/THIRD-PARTY-NOTICES.txt`](pilot/compliance/THIRD-PARTY-NOTICES.txt).

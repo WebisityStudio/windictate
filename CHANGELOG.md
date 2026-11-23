@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 Restricted Pilot (branch `restricted-pilot-build`)
+
+The restricted pilot edition: AI cleanup, model download, transcript history,
+the model choice, keep-on-clipboard and start-with-Windows removed; one fixed,
+checksum-verified model shipped; clipboard always restored; pilot notice and
+About window added. Full notes: [pilot/release/CHANGELOG.md](pilot/release/CHANGELOG.md).
+The entries below describe the general version this edition is based on.
+
 ## Unreleased
 
 Reliability fixes, a quieter look and a supported runtime ahead of the pilot on

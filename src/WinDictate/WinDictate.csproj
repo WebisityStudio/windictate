@@ -41,6 +41,18 @@
     <AssemblyMetadata Include="Edition" Value="Restricted Pilot" />
   </ItemGroup>
 
+  <!--
+    Only the x64 speech engine ships. Whisper.net.Runtime also brings x86 and
+    ARM64 copies of its native libraries; they would never be loaded here.
+  -->
+  <Target Name="KeepOnlyX64SpeechEngine" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <_OtherArchitectureSpeechEngine Include="@(None)"
+          Condition="$([System.String]::new('%(None.FullPath)').Contains('whisper.net.runtime')) And ($([System.String]::new('%(None.FullPath)').Contains('win-x86')) Or $([System.String]::new('%(None.FullPath)').Contains('win-arm64')))" />
+      <None Remove="@(_OtherArchitectureSpeechEngine)" />
+    </ItemGroup>
+  </Target>
+
   <!-- The licence texts travel with the program, so About can show them without a network. -->
   <ItemGroup>
     <None Include="..\..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

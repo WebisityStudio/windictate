@@ -17,3 +17,6 @@ publish-test/
 
 # Logs
 *.log
+
+# Restricted pilot release build
+.model-cache/
