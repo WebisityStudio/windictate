@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -156,7 +157,7 @@ public static class Package
             ["buildTool"] = "pilot/tools/ReleaseKit (build-release.ps1)",
             ["buildHost"] = OperatingSystem.IsWindows() ? "Windows" : OperatingSystem.IsMacOS() ? "macOS" : "Linux"
         };
-        File.WriteAllText(path, manifest.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+        File.WriteAllText(path, manifest.ToJsonString(Json.Readable) + "\n");
     }
 
     private static void CopyTree(string from, string to)

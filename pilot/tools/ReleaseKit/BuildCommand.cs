@@ -24,6 +24,16 @@ public sealed record ModelRecord(string Name, string FileName, long SizeBytes, s
     }
 }
 
+/// <summary>JSON written for people to read: indented, and "C++" rather than "C\u002B\u002B".</summary>
+public static class Json
+{
+    public static readonly JsonSerializerOptions Readable = new()
+    {
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+}
+
 /// <summary>Everything the later steps need to know about this release.</summary>
 public sealed class ReleaseContext
 {
@@ -51,6 +61,19 @@ public sealed class ReleaseContext
         string stamped = $"{DateTime.UtcNow:HH:mm:ss} {line}";
         Console.WriteLine(stamped);
         Log.Add(stamped);
+    }
+
+    /// <summary>The build log as it goes into the package: folders on the build machine replaced by placeholders.</summary>
+    public IEnumerable<string> LogForPackage()
+    {
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        foreach (string line in Log)
+        {
+            string clean = line.Replace(OutputRoot, "<output>", StringComparison.OrdinalIgnoreCase)
+                               .Replace(Root, "<repo>", StringComparison.OrdinalIgnoreCase);
+            if (home.Length > 3) clean = clean.Replace(home, "<home>", StringComparison.OrdinalIgnoreCase);
+            yield return clean;
+        }
     }
 }
 
@@ -132,13 +155,13 @@ public static class BuildCommand
         Package.Assemble(ctx, publish, model, sourceZip);
 
         ctx.Say("Sanitisation scan of the whole package");
+        File.WriteAllLines(Path.Combine(ctx.SubmissionDir, "05-Release", "BUILD-LOG.txt"), ctx.LogForPackage());
         var findings = Sanitiser.Scan(ctx.SubmissionDir, options.Get("deny-file"));
         Sanitiser.WriteReport(findings, Path.Combine(ctx.SubmissionDir, "05-Release", "SANITISATION-REPORT.md"), ctx);
         int blocking = findings.Count(f => f.Blocking);
         if (blocking > 0)
             throw new ReleaseException($"Sanitisation found {blocking} blocking item(s); see 05-Release/SANITISATION-REPORT.md.");
 
-        File.WriteAllLines(Path.Combine(ctx.SubmissionDir, "05-Release", "BUILD-LOG.txt"), ctx.Log);
         ctx.Say("Hashing every file (05-Release/SHA256SUMS.txt)");
         Hashing.WriteSums(ctx.SubmissionDir);
         Hashing.Verify(ctx.SubmissionDir);

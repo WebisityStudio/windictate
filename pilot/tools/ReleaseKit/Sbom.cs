@@ -280,7 +280,7 @@ public static class Sbom
             },
             ["components"] = new JsonArray(components.Where(c => !(c.Type == "application" && c.Shipped)).Select(c => (JsonNode)ToJson(c)).ToArray())
         };
-        File.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+        File.WriteAllText(path, root.ToJsonString(Json.Readable) + "\n");
     }
 
     private static JsonObject ToJson(Component c)
