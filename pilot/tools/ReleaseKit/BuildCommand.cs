@@ -63,13 +63,18 @@ public sealed class ReleaseContext
         Log.Add(stamped);
     }
 
-    /// <summary>The build log as it goes into the package: folders on the build machine replaced by placeholders.</summary>
+    /// <summary>
+    /// The build log as it goes into the package: without clock times (so the
+    /// same commit and build date give a byte-identical package) and with the
+    /// build machine's folders replaced by placeholders.
+    /// </summary>
     public IEnumerable<string> LogForPackage()
     {
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         foreach (string line in Log)
         {
-            string clean = line.Replace(OutputRoot, "<output>", StringComparison.OrdinalIgnoreCase)
+            string untimed = System.Text.RegularExpressions.Regex.Replace(line, @"^\d\d:\d\d:\d\d ", "");
+            string clean = untimed.Replace(OutputRoot, "<output>", StringComparison.OrdinalIgnoreCase)
                                .Replace(Root, "<repo>", StringComparison.OrdinalIgnoreCase);
             if (home.Length > 3) clean = clean.Replace(home, "<home>", StringComparison.OrdinalIgnoreCase);
             yield return clean;
