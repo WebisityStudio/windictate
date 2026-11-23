@@ -70,7 +70,7 @@ If the model is missing or fails its checksum, WinDictate shows why and exits. R
 
 ## 6. Starting with Windows
 
-The pilot build has no option to start with Windows, and installation adds no start-up entry. If the pilot owners decide RMs should have it start automatically, add a shortcut to `WinDictate.exe` in the Startup folder (or the deployment tool's equivalent). The uninstall script removes it again.
+The pilot build has no option to start with Windows, and installation adds no start-up entry. If the pilot owners decide it should start automatically for pilot users, add a shortcut to `WinDictate.exe` in the Startup folder (or the deployment tool's equivalent). The uninstall script removes it again.
 
 ## 7. Version check
 
