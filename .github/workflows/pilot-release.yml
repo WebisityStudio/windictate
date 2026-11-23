@@ -37,13 +37,16 @@ jobs:
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       DOTNET_NOLOGO: '1'
-      PILOT_OUT: ${{ runner.temp }}\pilot-out
       UI_SMOKE_OUT: ${{ github.workspace }}\ui-smoke-out
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      - name: Choose the output folder (outside the repository)
+        shell: pwsh
+        run: '"PILOT_OUT=$env:RUNNER_TEMP\pilot-out" >> $env:GITHUB_ENV'
 
       - name: Set up the pinned .NET SDK (global.json)
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
@@ -194,6 +197,15 @@ jobs:
         run: |
           $mp = Join-Path $env:ProgramFiles 'Windows Defender\MpCmdRun.exe'
           $report = Join-Path $env:PILOT_OUT 'MALWARE-SCAN.txt'
+          $service = Get-Service WinDefend -ErrorAction SilentlyContinue
+          if (-not (Test-Path $mp) -or -not $service -or $service.Status -ne 'Running') {
+            $why = if (-not (Test-Path $mp)) { 'MpCmdRun.exe is not installed' } else { "the WinDefend service is $($service.Status)" }
+            "Microsoft Defender scan NOT RUN on this build machine: $why. Scan the package with your organisation's endpoint scanner." | Set-Content -Encoding utf8 $report
+            "## Malware scan`n`n- **Not run**: Microsoft Defender is not available on this runner ($why). The package must be scanned with the organisation's endpoint scanner.`n" |
+              Add-Content -Encoding utf8 "$env:PILOT_OUT\CI-VERIFICATION.md"
+            Get-Content $report
+            return
+          }
           $update = & $mp -SignatureUpdate 2>&1 | Out-String
           $scanZip = & $mp -Scan -ScanType 3 -File $env:ZIP -DisableRemediation 2>&1 | Out-String
           $zipCode = $LASTEXITCODE

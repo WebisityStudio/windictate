@@ -304,7 +304,7 @@
                 <HeaderedContentControl Style="{StaticResource FirstRow}" Header="History" Tag="Nothing you say or dictate is saved: no audio, no text">
                     <TextBlock Style="{StaticResource Fixed}" Text="Off"/>
                 </HeaderedContentControl>
-                <HeaderedContentControl Style="{StaticResource Row}" Header="Your clipboard" Tag="Put back after each dictation. Text that could not be inserted is removed after 2 minutes">
+                <HeaderedContentControl Style="{StaticResource Row}" Header="Your clipboard" Tag="Put back after each dictation">
                     <TextBlock Style="{StaticResource Fixed}" Text="Restored"/>
                 </HeaderedContentControl>
                 <HeaderedContentControl Style="{StaticResource Row}" Header="Network" Tag="WinDictate never connects to the internet or to any server">
