@@ -108,39 +108,57 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $data = Join-Path $env:LOCALAPPDATA 'WinDictate'
-          if (Test-Path $data) { Remove-Item $data -Recurse -Force }
+          $log = Join-Path $data 'windictate.log'
+          # True when the program's log has a matching line. The log only exists once the
+          # program has written its first line, so a missing or busy file means "not yet".
+          function Test-LogHas([string] $pattern) {
+            try { (Test-Path -LiteralPath $log) -and [bool](Select-String -LiteralPath $log -Pattern $pattern -Quiet) } catch { $false }
+          }
+          # Started completely: the model is verified and loaded, and the program logged
+          # "Ready." (which comes after it starts listening for --exit).
+          function Test-Started { (Test-LogHas '\[INFO \] Ready\. ') -and (Test-LogHas 'Loaded model .* verified') }
+          if (Test-Path -LiteralPath $data) { Remove-Item -LiteralPath $data -Recurse -Force }
           New-Item -ItemType Directory -Force $data | Out-Null
           # This test user has "acknowledged" the pilot notice, so the program starts unattended.
           '{ "NoticeAcknowledged": "1" }' | Set-Content -Encoding utf8 (Join-Path $data 'settings.json')
           auditpol /set /subcategory:"Filtering Platform Connection" /success:enable /failure:enable | Out-Null
-          $tempBefore = @(Get-ChildItem $env:TEMP -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object FullName)
+          if ($LASTEXITCODE -ne 0) { throw "auditpol could not turn on connection auditing (exit code $LASTEXITCODE)" }
+          $tempBefore = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+          Get-ChildItem $env:TEMP -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object { [void] $tempBefore.Add($_.FullName) }
           $start = Get-Date
           $exe = Join-Path $env:RUNTIME 'WinDictate.exe'
           $proc = Start-Process -FilePath $exe -PassThru
-          $log = Join-Path $data 'windictate.log'
           $deadline = (Get-Date).AddSeconds(180)
-          while ((Get-Date) -lt $deadline -and -not (Select-String -Path $log -Pattern 'Loaded model' -Quiet -ErrorAction SilentlyContinue)) { Start-Sleep 1 }
-          if (-not (Select-String -Path $log -Pattern 'Loaded model .* verified' -Quiet)) { Get-Content $log; throw 'The program did not verify and load the model' }
+          while ((Get-Date) -lt $deadline -and -not $proc.HasExited -and -not (Test-Started)) { Start-Sleep 1 }
+          if (-not (Test-Started)) {
+            if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log }
+            throw "WinDictate.exe did not start completely (model verified and loaded, then ready); exited: $($proc.HasExited)"
+          }
           Start-Sleep 15   # idle, as a user would leave it
           curl.exe -s -o NUL https://example.com   # control: proves the audit records connections
           $exit = Start-Process -FilePath $exe -ArgumentList '--exit' -Wait -PassThru
           if ($exit.ExitCode -ne 0) { throw "--exit returned $($exit.ExitCode)" }
           if (-not $proc.WaitForExit(10000)) { throw 'WinDictate.exe did not exit' }
           Start-Sleep 3
-          $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 5156, 5157; StartTime = $start } -ErrorAction SilentlyContinue)
+          $events = @()
+          try {
+            $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 5156, 5157; StartTime = $start } -ErrorAction Stop)
+          } catch {
+            # No events at all is a result (the control check below then fails); anything else is a fault.
+            if ($_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound*') { throw }
+          }
           $ours = @($events | Where-Object { $_.Properties[0].Value -eq $proc.Id -or "$($_.Properties[1].Value)" -match 'windictate\.exe' })
           $control = @($events | Where-Object { "$($_.Properties[1].Value)" -match 'curl\.exe' })
           if ($control.Count -eq 0) { throw 'Connection auditing recorded nothing for the control connection: the audit cannot be trusted' }
           if ($ours.Count -gt 0) { $ours | Format-List TimeCreated, Id, Message; throw "WinDictate.exe made $($ours.Count) connection attempt(s)" }
-          $files = @(Get-ChildItem $data -Force | ForEach-Object Name)
+          $files = @(Get-ChildItem -LiteralPath $data -Force | ForEach-Object Name)
           $unexpected = @($files | Where-Object { $_ -notin 'settings.json', 'windictate.log', 'windictate.log.old' })
           if ($unexpected.Count -gt 0) { throw "Unexpected files in the data folder: $($unexpected -join ', ')" }
-          $tempAfter = @(Get-ChildItem $env:TEMP -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object FullName)
-          $newTemp = @($tempAfter | Where-Object { $_ -notin $tempBefore })
+          $newTemp = @(Get-ChildItem $env:TEMP -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { -not $tempBefore.Contains($_.FullName) } | ForEach-Object FullName)
           $suspect = @($newTemp | Where-Object { $_ -match '\.(wav|pcm|tsv)$' -or $_ -match 'windictate' })
           if ($suspect.Count -gt 0) { throw "Audio, history or WinDictate files appeared in TEMP: $($suspect -join ', ')" }
           $fence = '```'
-          $logText = (Get-Content $log) -join "`n"
+          $logText = (Get-Content -LiteralPath $log) -join "`n"
           $summary = @(
             '## Network audit', '',
             '- WinDictate.exe started, verified and loaded the model, idled 15 s and exited on --exit (exit code 0).',
@@ -161,31 +179,66 @@ jobs:
           $dest = Join-Path $env:LOCALAPPDATA 'Programs\WinDictate Restricted Pilot'
           $shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'WinDictate Restricted Pilot.lnk'
           $data = Join-Path $env:LOCALAPPDATA 'WinDictate'
+          $log = Join-Path $data 'windictate.log'
           function Assert($condition, $message) { if (-not $condition) { throw $message } }
+          # See the network audit step: a log that does not exist yet means "not yet".
+          function Test-LogHas([string] $pattern) {
+            try { (Test-Path -LiteralPath $log) -and [bool](Select-String -LiteralPath $log -Pattern $pattern -Quiet) } catch { $false }
+          }
+          function Test-Started { (Test-LogHas '\[INFO \] Ready\. ') -and (Test-LogHas 'Loaded model .* verified') }
+          # Any start-up entry mentioning WinDictate: Run and RunOnce (this user and the
+          # machine) and both Startup folders.
+          function Get-StartupEntries {
+            $found = @()
+            foreach ($hive in [Microsoft.Win32.Registry]::CurrentUser, [Microsoft.Win32.Registry]::LocalMachine) {
+              foreach ($path in 'Software\Microsoft\Windows\CurrentVersion\Run', 'Software\Microsoft\Windows\CurrentVersion\RunOnce') {
+                $key = $hive.OpenSubKey($path)
+                if (-not $key) { continue }
+                try { foreach ($name in $key.GetValueNames()) { if ("$name $($key.GetValue($name))" -match 'WinDictate') { $found += "$($key.Name)\$name" } } }
+                finally { $key.Dispose() }
+              }
+            }
+            foreach ($folder in [Environment]::GetFolderPath('Startup'), [Environment]::GetFolderPath('CommonStartup')) {
+              if ($folder -and (Test-Path -LiteralPath $folder)) { $found += @(Get-ChildItem -LiteralPath $folder -Force | Where-Object Name -match 'WinDictate' | ForEach-Object FullName) }
+            }
+            $found
+          }
           $lines = @()
           foreach ($round in 1, 2) {
-            powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $scripts 'Install-WinDictate.ps1')
-            Assert ($LASTEXITCODE -eq 0) "install failed (round $round)"
-            Assert (Test-Path (Join-Path $dest 'WinDictate.exe')) 'program not installed'
-            Assert (Test-Path (Join-Path $dest "models\ggml-small.en.bin")) 'model not installed'
-            Assert (Test-Path $shortcut) 'Start Menu shortcut missing'
-            Assert (-not (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name WinDictate -ErrorAction SilentlyContinue)) 'a start-up entry was created'
+            # No settings or log from an earlier step or round, so the checks below see only this round's program.
+            if (Test-Path -LiteralPath $data) { Remove-Item -LiteralPath $data -Recurse -Force }
+            $installOut = @(powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $scripts 'Install-WinDictate.ps1'))
+            $installCode = $LASTEXITCODE
+            $installOut | ForEach-Object { Write-Host $_ }
+            Assert ($installCode -eq 0) "install failed (round $round)"
+            $checked = @($installOut | Where-Object { $_ -match '^Checked (\d+) program files' }) | Select-Object -First 1
+            Assert ($checked -and [int]([regex]::Match($checked, '\d+').Value) -gt 0) "the install did not check the files against SHA256SUMS.txt (round $round)"
+            Assert (Test-Path -LiteralPath (Join-Path $dest 'WinDictate.exe')) 'program not installed'
+            Assert (Test-Path -LiteralPath (Join-Path $dest 'models\ggml-small.en.bin')) 'model not installed'
+            Assert (Test-Path -LiteralPath $shortcut) 'Start Menu shortcut missing'
+            $startup = @(Get-StartupEntries)
+            Assert ($startup.Count -eq 0) "a start-up entry was created: $($startup -join ', ')"
             New-Item -ItemType Directory -Force $data | Out-Null
             '{ "NoticeAcknowledged": "1" }' | Set-Content -Encoding utf8 (Join-Path $data 'settings.json')
             $proc = Start-Process (Join-Path $dest 'WinDictate.exe') -PassThru
             $deadline = (Get-Date).AddSeconds(180)
-            while ((Get-Date) -lt $deadline -and -not (Select-String -Path (Join-Path $data 'windictate.log') -Pattern 'Loaded model' -Quiet -ErrorAction SilentlyContinue)) { Start-Sleep 1 }
-            Assert (Select-String -Path (Join-Path $data 'windictate.log') -Pattern 'Loaded model .* verified' -Quiet) 'installed program did not load the model'
+            while ((Get-Date) -lt $deadline -and -not $proc.HasExited -and -not (Test-Started)) { Start-Sleep 1 }
+            if (-not (Test-Started)) {
+              if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log }
+              throw "installed program did not start completely (round $round); exited: $($proc.HasExited)"
+            }
             $exit = Start-Process (Join-Path $dest 'WinDictate.exe') -ArgumentList '--exit' -Wait -PassThru
-            Assert ($exit.ExitCode -eq 0) '--exit failed'
+            Assert ($exit.ExitCode -eq 0) "--exit failed (round $round, exit code $($exit.ExitCode))"
             Assert ($proc.WaitForExit(10000)) 'program did not exit'
             powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $scripts 'Uninstall-WinDictate.ps1')
             Assert ($LASTEXITCODE -eq 0) "uninstall failed (round $round)"
-            Assert (-not (Test-Path $dest)) 'program folder left behind'
-            Assert (-not (Test-Path $shortcut)) 'shortcut left behind'
-            Assert (-not (Test-Path $data)) 'settings and log left behind'
+            Assert (-not (Test-Path -LiteralPath $dest)) 'program folder left behind'
+            Assert (-not (Test-Path -LiteralPath $shortcut)) 'shortcut left behind'
+            Assert (-not (Test-Path -LiteralPath $data)) 'settings and log left behind'
             Assert (-not (Get-Process WinDictate -ErrorAction SilentlyContinue)) 'process still running'
-            $lines += "- Round ${round}: installed (files checked against SHA256SUMS.txt), started, model verified and loaded, exited on --exit, uninstalled; nothing left behind; no start-up entry at any point."
+            $startup = @(Get-StartupEntries)
+            Assert ($startup.Count -eq 0) "a start-up entry is present after uninstall: $($startup -join ', ')"
+            $lines += "- Round ${round}: installed with $([regex]::Match($checked, '\d+').Value) program files checked against SHA256SUMS.txt; started, model verified and loaded, exited on --exit, uninstalled; nothing left behind; no start-up entry (Run and RunOnce keys, Startup folders) at any point."
           }
           ("## Install, uninstall, reinstall`n`n" + ($lines -join "`n") + "`n") | Add-Content -Encoding utf8 "$env:PILOT_OUT\CI-VERIFICATION.md"
 
