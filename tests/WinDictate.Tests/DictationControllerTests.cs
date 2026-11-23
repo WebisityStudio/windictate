@@ -761,6 +761,17 @@ public sealed class DictationControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task DictationWithNoTextFieldUnderTheCursor_SaysCheckItArrived_AndKeepsTheText()
+    {
+        _target.UserCopies("my own text");
+        _target.PasteGoesNowhere = true;
+        await DictateAsync("A");
+        await WaitFor(() => OverlayShowed("notice:May have been inserted · 2 words in clipboard — check, then Ctrl+V"), "the notice");
+        Assert.Equal("Text A. ", _target.Clipboard);
+        Assert.Empty(_target.Delivered);
+    }
+
+    [Fact]
     public async Task UndeliveredText_IsRemovedFromTheClipboard_WhenItsTimeIsUp()
     {
         _timings = Fast with { RecoveryClearMs = 300 };

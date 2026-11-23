@@ -121,7 +121,7 @@ public partial class App : Application
         // The hook runs on its own thread and calls the hotkey state machine
         // directly from the hook callback (see KeyboardHook and HotkeyMonitor).
         _hook = new KeyboardHook();
-        _hook.KeyEvent += (vk, down) => _hotkeys!.OnKeyEvent(vk, down);
+        _hook.KeyEvent += (vk, down, scanCode) => _hotkeys!.OnKeyEvent(vk, down, scanCode);
 
         // Stop recording if the workstation locks or disconnects — the key-up
         // events land on the secure desktop and are never delivered, so without

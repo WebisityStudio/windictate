@@ -24,7 +24,7 @@ Tester: ______________________  Date: ____________  Laptop model and Windows bui
 | H-2 | Cancel | Hold Ctrl+Alt, speak, press Esc, let go | "Cancelled"; nothing inserted | |
 | H-3 | Quick tap | Tap Ctrl+Alt briefly | Nothing appears, nothing inserted | |
 | H-4 | Shortcut available | At every start in this plan | No "could not register its keyboard shortcut" message; if it appears, record which security software is installed | |
-| H-5 | Keyboard with AltGr (UK/European layout) | Type € (AltGr+4) and other AltGr characters in Word | The characters type normally; nothing is dictated or inserted. Note whether Windows' microphone icon flickers (see KNOWN-LIMITATIONS) | |
+| H-5 | Keyboard with AltGr (UK/European layout) | Type € (AltGr+4) and other AltGr characters in Word, watching the notification area | The characters type normally; no pill appears, nothing is inserted, and Windows' microphone icon does not appear | |
 | H-6 | Shortcut clash | If Ctrl+Alt clashes with another program, change it in Settings > Advanced and dictate | The new shortcut works; the tray menu shows it | |
 | I-1 | Indicator follows the microphone | Hold Ctrl+Alt for 10 s while speaking | The pill is visible for the whole recording and disappears after insertion | |
 | I-2 | Target shown | Dictate into Outlook, Word, Teams and Edge | The pill names each app; never a document or e-mail title | |
@@ -69,7 +69,9 @@ Tester: ______________________  Date: ____________  Laptop model and Windows bui
 | C-3 | Failed insertion recovery | Dictate, let go and keep Shift held for over 5 s | "Copied. Press Ctrl+V"; Ctrl+V pastes the dictation | |
 | C-4 | Recovery removed after 2 minutes | After C-3, wait 2½ minutes, press Ctrl+V | The dictation is no longer pasted; what was on the clipboard before is back (if it was plain text) | |
 | C-5 | Clipboard history | Turn on clipboard history (Win+V), dictate several times | Win+V never shows dictated text | |
-| C-6 | Copy last dictation | Dictate with the cursor on the desktop (no text field); within 2 minutes use tray > Copy last dictation; paste into Notepad | The dictation is pasted; after 2 minutes the menu item is greyed out | |
+| C-6 | No text field *(automated)* | Click the desktop (no text field), then dictate | Within about 2 s: "Check it arrived. If not, Ctrl+V"; Ctrl+V in Notepad pastes the dictation | |
+| C-7 | Copy last dictation | Dictate into Notepad; within 2 minutes use tray > Copy last dictation; paste into Word | The dictation is pasted; after 2 minutes the menu item is greyed out | |
+| C-8 | Busy application | Paste-dictate into a large Word document while Word is busy (for example right after opening it); then press Ctrl+V elsewhere | The dictation (never your earlier clipboard) goes into Word; Ctrl+V afterwards pastes your earlier clipboard | |
 
 ## Security transitions and devices
 

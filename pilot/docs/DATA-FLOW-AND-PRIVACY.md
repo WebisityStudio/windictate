@@ -34,9 +34,11 @@ Dictations still in the queue when WinDictate exits are discarded.
 
 | Situation | What happens |
 |---|---|
-| Paste (default) | The current clipboard is read; the transcript is placed on it; Ctrl+V is sent; after 0.3 s the previous content is put back, unless something else has replaced the transcript in the meantime |
+| Paste (default) | The current clipboard is read; the transcript is offered on the clipboard with Windows' delayed rendering, so Windows tells WinDictate the moment an application reads it; Ctrl+V is sent; once the application has read the text (plus 0.3 s for apps that read several formats), the previous content is put back, unless something else has replaced the transcript in the meantime. A busy application therefore never pastes the user's earlier clipboard content instead of the dictation |
+| Paste that nothing reads within 2 s | Usually the cursor was not in a text field. The transcript stays on the clipboard as undelivered text, with a notice to check and press Ctrl+V; it is removed after 2 minutes like any undelivered text |
 | Clipboard holds a picture, files, formatted text or anything besides plain text | WinDictate cannot restore that exactly, so it types the text instead and does not touch the clipboard |
 | Clipboard cannot be read | Text is typed instead |
+| Another program reads the clipboard before the paste (for example a clipboard manager) | The paste's own read cannot be seen; the previous content is put back after 1.5 s |
 | Type mode (setting) | The clipboard is never used, unless insertion fails |
 | Insertion fails (focus moved, keys held, input blocked, PC locked since the dictation) | The text is left on the clipboard and a notice says "Press Ctrl+V". Later dictations leave it alone for 30 s. After 2 minutes it is removed and the previous plain-text content is put back (or the clipboard is cleared). If the user copies something else meanwhile, WinDictate leaves the clipboard alone |
 | WinDictate exits | Any undelivered text still on the clipboard is removed |

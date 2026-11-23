@@ -12,7 +12,8 @@ WinDictate Restricted Pilot {{VERSION}}. Known before the pilot, stated plainly 
 ## Insertion
 
 - **Fields inside browsers and some apps cannot be told apart.** Edge, Chrome, Teams, new Outlook and other single-window apps report one control for the whole window. If the user clicks into another field of the same app before the text is ready, it goes into the new field (other windows are protected). UAT F-3.
-- **Pasting restores the clipboard after 0.3 s.** An application so busy that it reads the clipboard later than that could paste the user's previous clipboard text instead of the dictation. The user would see the wrong text and can use **Copy last dictation**.
+- **A paste nothing reads is reported, not guessed.** WinDictate puts the user's clipboard back only after the application has read the dictation. If nothing reads it within 2 seconds (usually because no text field had the cursor, or the application is extremely busy), the dictation stays on the clipboard and a notice says to check and press Ctrl+V. An application that reads after that still gets the dictation, never the user's earlier clipboard.
+- **Clipboard managers that read every new clipboard content** hide the paste's own read from WinDictate; it then waits 1.5 s before putting the user's clipboard back. Windows clipboard history does not do this (dictations are marked to be left out).
 - **Typing instead of pasting.** When the clipboard holds a picture, files or formatted text, the dictation is typed (so the clipboard is not lost). Typing into an area that is not a text field can trigger that application's single-key shortcuts. This is also true of the optional "Typing" mode. Always dictate with the cursor in a text field.
 - **Text that could not be inserted is removed from the clipboard after 2 minutes**, by design. If the clipboard held a picture or formatted content before the failure, that earlier content is not restored.
 - **Dictations not yet inserted when WinDictate exits are discarded.**
@@ -21,7 +22,7 @@ WinDictate Restricted Pilot {{VERSION}}. Known before the pilot, stated plainly 
 
 ## Hotkey and indicator
 
-- **AltGr is Ctrl+Alt to Windows.** On keyboards with an AltGr key (UK and European layouts), typing an AltGr character (for example € with AltGr+4) briefly starts and immediately cancels a session. The microphone opens for a fraction of a second, nothing is kept or transcribed, and the indicator does not appear. Windows' own microphone icon may flicker. If this is unacceptable, choose another shortcut in Settings > Advanced (for example Ctrl+Shift). UAT H-5.
+- **AltGr.** To Windows, AltGr is Ctrl+Alt: it adds a marked left-Ctrl key event to every AltGr press. WinDictate ignores that marked event, so typing AltGr characters (for example € with AltGr+4) never starts a dictation or opens the microphone. Holding the real Ctrl key together with AltGr still counts as the shortcut. This is checked by unit tests; it can only be confirmed with a physical UK or European keyboard (UAT H-5).
 - **The indicator appears 0.18 s after the microphone starts delivering audio**, so brushing the keys never flashes it. Recordings shorter than 0.5 s are discarded without being transcribed. Windows' own microphone icon shows from the first moment.
 - **The keyboard hook can be blocked** by some security software. WinDictate then says so at start-up, and dictation is unavailable.
 - **The Edge glow style does not name the target application** (it has no words by design). The glass pill does.

@@ -29,6 +29,7 @@ WinDictate Restricted Pilot {{VERSION}}, commit `{{COMMIT_SHORT}}`. Each control
 | No dictated text in logs | Only counts, durations, types and codes are logged | Unit test `NothingDictated_IsWrittenToDisk_NorToTheLog`; UAT L-1 |
 | Clipboard not left holding dictations | Restored after each paste; undelivered text removed after 2 minutes and at exit; excluded from history and cloud | Unit tests in `TextInserterTests` and `DictationControllerTests`; Windows tests `Clipboard_RoundTrips_WithoutTheUiThread` (markers present) and `TextWaitingOnTheClipboard_…`; UAT C-1 to C-5 |
 | Clipboard content of the user preserved | Text restored; non-text content never replaced (dictation typed instead) | Unit tests `PictureOnTheClipboard_…`, `FormattedTextOnTheClipboard_…`; Windows test `APictureOnTheClipboard_SurvivesADictation`; UAT C-2 |
+| Never the wrong text pasted | The user's clipboard is put back only after the application has read the dictation (delayed rendering); a paste nothing reads keeps the dictation on the clipboard with a notice | Unit tests `TheUsersClipboard_ComesBackOnlyAfterThePasteHasTakenTheText`, `APasteThatNothingReads_…`; Windows tests `PastingIntoAnotherProgram_…` (Notepad) and `PastingWhereThereIsNoTextField_…`; UAT C-6, C-8 |
 
 ## 4. Text goes only where it was dictated
 
@@ -48,6 +49,7 @@ WinDictate Restricted Pilot {{VERSION}}, commit `{{COMMIT_SHORT}}`. Each control
 | Missed key release cannot keep the microphone open | Watchdog ends the session within about 0.2 s when the keys are no longer held | `HotkeyWatchdogTests`; UAT S-2 |
 | Lost microphone ends the recording | Device stop or 2 s without audio ends the session; audio discarded; notice shown | Unit test `MicrophoneUnplugged_…`; UAT D-1 |
 | Cancel route | Esc (or any other key) before letting go | Unit tests; UAT H-2 |
+| AltGr never opens the microphone | AltGr's added Ctrl event is ignored, so typing € and other AltGr characters is not Ctrl+Alt | Unit tests `TypingWithAltGr_NeverStartsADictation`, `RealCtrl_WithAltGr_StillCounts`; UAT H-5 |
 | Hotkey failure is reported | A message if the keyboard hook cannot be installed; tray shows "Shortcut unavailable" | Code review; UAT H-4 |
 | Indicator | Shows while the microphone captures; disappears when it stops | Unit and Windows tests; UAT I-1 |
 

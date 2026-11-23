@@ -74,10 +74,59 @@ public sealed record ClipboardSnapshot(bool Readable, string? Text, bool OnlyTex
     public bool CanRestore => Readable && OnlyText;
 }
 
+/// <summary>What happened after Ctrl+V was sent with text offered on the clipboard.</summary>
+public enum PasteRead
+{
+    /// <summary>An application read the text after Ctrl+V: the paste happened.</summary>
+    Read,
+
+    /// <summary>Nothing read it in time: the paste went nowhere (no text field had the cursor), or the app is very busy.</summary>
+    NotRead,
+
+    /// <summary>Another program read the text before Ctrl+V, so the paste's own read cannot be seen.</summary>
+    Unknown
+}
+
+public enum ReplaceResult
+{
+    /// <summary>The clipboard now holds what was asked for.</summary>
+    Replaced,
+
+    /// <summary>Another program put something new on the clipboard meanwhile: it was left alone.</summary>
+    LeftAlone,
+
+    Failed
+}
+
+/// <summary>
+/// Text put on the clipboard for one paste, in a way that tells WinDictate when an
+/// application reads it (Windows: ClipboardOffer, with delayed rendering). Lets the
+/// user's own clipboard be put back only after the target has taken the text.
+/// </summary>
+public interface IPasteOffer : IDisposable
+{
+    /// <summary>Call just before sending Ctrl+V: reads from then on count as the paste.</summary>
+    void PasteSent();
+
+    /// <summary>Waits up to <paramref name="timeoutMs"/> for the paste to read the text.</summary>
+    Task<PasteRead> WaitForReadAsync(int timeoutMs);
+
+    /// <summary>Puts <paramref name="text"/> (null: nothing) on the clipboard instead of the offer,
+    /// unless another program has put something new there meanwhile.</summary>
+    Task<ReplaceResult> ReplaceWithAsync(string? text);
+
+    /// <summary>Leaves the offered text on the clipboard as ordinary text.</summary>
+    Task<bool> KeepAsync();
+}
+
 /// <summary>Operating-system primitives for inserting text (Windows: WindowsTextTarget).
 /// Clipboard calls may take a while; they are only made from worker threads.</summary>
 public interface ITextTarget
 {
+    /// <summary>Offers text on the clipboard for one paste (see <see cref="IPasteOffer"/>);
+    /// null if the clipboard cannot be taken.</summary>
+    Task<IPasteOffer?> OfferForPasteAsync(string text);
+
     /// <summary>Puts text on the clipboard, marked so that Windows clipboard history
     /// and cloud clipboard leave it out.</summary>
     Task<bool> SetClipboardTextAsync(string text);
@@ -113,9 +162,11 @@ public sealed record InsertOptions(bool TypeMode, int ClipboardRestoreDelayMs)
 /// Inserts transcripts into the focused application without leaving them
 /// behind.
 ///
-/// "paste" mode (default): the user's clipboard is read, the transcript is put
-/// on the clipboard, Ctrl+V is sent, and the user's clipboard is put back. This
-/// only works exactly for plain text, so when the clipboard holds anything else
+/// "paste" mode (default): the user's clipboard is read, the transcript is
+/// offered on the clipboard, Ctrl+V is sent, and once the application has read
+/// the text the user's clipboard is put back. If nothing reads it within 2
+/// seconds (no text field had the cursor), it is treated as undelivered. Putting
+/// back only works exactly for plain text, so when the clipboard holds anything else
 /// (a picture, files, formatted text from Word or a web page) or cannot be read,
 /// the transcript is typed instead and the clipboard is not touched at all. If
 /// the clipboard cannot be set, the transcript is typed as well (never paste
@@ -147,6 +198,12 @@ public sealed class TextInserter
 
     /// <summary>How long undelivered text stays on the clipboard after the user is told about it.</summary>
     public const int DefaultClearMs = 120_000;
+
+    /// <summary>How long a paste may take to read the clipboard before WinDictate treats it as having gone nowhere.</summary>
+    public const int PasteReadTimeoutMs = 2000;
+
+    /// <summary>When the paste's read cannot be seen (another program read first), how long to wait before putting the clipboard back.</summary>
+    public const int UnseenPasteRestoreMs = 1500;
 
     private readonly ITextTarget _target;
     private readonly Func<int, Task> _delay;
@@ -370,42 +427,56 @@ public sealed class TextInserter
         // If this paste fails, what goes back on the clipboard later is the user's own
         // content: when older undelivered text is underneath, what preceded that.
         ClipboardSnapshot? usersContent = recoveryUnderneath ? _beforeRecovery : previous;
-        if (!await _target.SetClipboardTextAsync(text).ConfigureAwait(false))
+
+        using IPasteOffer? offer = await _target.OfferForPasteAsync(text).ConfigureAwait(false);
+        if (offer == null)
         {
             // Ctrl+V would paste whatever is on the clipboard now: type the text instead.
             return await TypeAsync(text, target, protect: false, spareClipboard: false).ConfigureAwait(false);
         }
-        long ours = _target.ClipboardSequence;
 
         if (!target.Matches(_target.CurrentTarget()))
             return await KeepForRecoveryAsync(text, false, RecoveryReason.TargetChanged, usersContent).ConfigureAwait(false);
 
+        offer.PasteSent();
         var sent = _target.SendPaste();
         if (sent == SendResult.KeysHeld)
         {
             // Nothing was pasted. Put the user's content back now; if this restore
             // fails, the retry still has the saved copy.
-            await RestoreAsync(previous, ours, text, recoveryUnderneath).ConfigureAwait(false);
+            ReplaceResult back = await offer.ReplaceWithAsync(previous.Text).ConfigureAwait(false);
+            AfterRestore(back, recoveryUnderneath);
             return new InsertResult(InsertOutcome.KeysHeld);
         }
         if (sent == SendResult.Partial)
             return await KeepForRecoveryAsync(text, false, RecoveryReason.MaybePasted, usersContent).ConfigureAwait(false);
         if (sent != SendResult.Sent)
             return await KeepForRecoveryAsync(text, false, RecoveryReason.NotDelivered, usersContent).ConfigureAwait(false);
-
         _savedPrevious = null;
-        // The target app reads the clipboard after it receives Ctrl+V, so wait
-        // before putting the previous contents back.
-        await _delay(Math.Max(100, options.ClipboardRestoreDelayMs)).ConfigureAwait(false);
-        bool restored = await RestoreAsync(previous, ours, text, recoveryUnderneath).ConfigureAwait(false);
-        if (!restored && _target.ClipboardSequence == ours)
+
+        // Put the user's clipboard back only once the application has taken the text:
+        // a busy application that reads the clipboard late must never paste the
+        // user's earlier content instead of the dictation.
+        PasteRead read = await offer.WaitForReadAsync(PasteReadTimeoutMs).ConfigureAwait(false);
+        if (read == PasteRead.NotRead)
+        {
+            // Nothing took the text: most likely no text field had the cursor. It stays on
+            // the clipboard like any undelivered dictation (removed after its time).
+            return await KeepForRecoveryAsync(text, false, RecoveryReason.MaybePasted, usersContent).ConfigureAwait(false);
+        }
+        // A moment more, for applications that read several formats one after another.
+        await _delay(read == PasteRead.Read ? Math.Clamp(options.ClipboardRestoreDelayMs, 50, 1000) : UnseenPasteRestoreMs).ConfigureAwait(false);
+        ReplaceResult restore = await offer.ReplaceWithAsync(previous.Text).ConfigureAwait(false);
+        AfterRestore(restore, recoveryUnderneath);
+        bool restored = restore != ReplaceResult.Failed;
+        if (!restored && await offer.KeepAsync().ConfigureAwait(false))
         {
             // The transcript is still on the clipboard. Treat it like undelivered
             // text so that it is removed (and the user's text put back) when its
             // time is up, but do not make later dictations work around it.
             _recoveryText = text;
             _recoveryCount = 1;
-            _recoverySequence = ours;
+            _recoverySequence = _target.ClipboardSequence;
             _recoveredAt = _clock();
             _beforeRecovery = usersContent;
             _protected = false;
@@ -413,30 +484,12 @@ public sealed class TextInserter
         return new InsertResult(InsertOutcome.Inserted, OnClipboard: !restored, ClipboardNotRestored: !restored);
     }
 
-    /// <summary>
-    /// Puts back what was on the clipboard before <paramref name="text"/> was put
-    /// there, unless someone else has changed the clipboard in the meantime.
-    /// </summary>
-    /// <returns>False when the transcript is still on the clipboard afterwards.</returns>
-    private async Task<bool> RestoreAsync(ClipboardSnapshot previous, long ours, string text, bool recoveryUnderneath)
+    /// <summary>Keeps track of older undelivered text that a paste put back (or lost).</summary>
+    private void AfterRestore(ReplaceResult result, bool recoveryUnderneath)
     {
-        if (_target.ClipboardSequence != ours)
-        {
-            // Changed since our write. If it is no longer our transcript, it is
-            // someone else's content: leave it.
-            ClipboardSnapshot now = await _target.ReadClipboardAsync().ConfigureAwait(false);
-            if (!now.Readable || now.Text != text) return true;
-        }
-        bool restored = previous.Text != null
-            ? await _target.SetClipboardTextAsync(previous.Text).ConfigureAwait(false)
-            : await _target.ClearClipboardAsync().ConfigureAwait(false);
-        if (recoveryUnderneath)
-        {
-            // The undelivered text is back where it was (or lost, if the restore failed).
-            if (restored) _recoverySequence = _target.ClipboardSequence;
-            else ForgetRecovery();
-        }
-        return restored;
+        if (!recoveryUnderneath) return;
+        if (result == ReplaceResult.Replaced) _recoverySequence = _target.ClipboardSequence; // back where it was
+        else ForgetRecovery(); // replaced by someone else's content, or lost
     }
 
     private bool IsOurRecoveryOnClipboard() => _recoveryText != null && _target.ClipboardSequence == _recoverySequence;

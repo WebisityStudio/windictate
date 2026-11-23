@@ -18,13 +18,16 @@ namespace WinDictate.Core;
 public sealed class KeyboardHook : IDisposable
 {
     /// <summary>(virtualKeyCode, isDown), raised on the hook thread inside the hook callback.</summary>
-    public event Action<int, bool>? KeyEvent;
+    /// <summary>A key went down or up: virtual-key code, down, scan code.</summary>
+    public event Action<int, bool, int>? KeyEvent;
 
     private const uint WM_APP_REINSTALL = NativeMethods.WM_APP + 1;
     private const uint WM_APP_STOP = NativeMethods.WM_APP + 2;
 
     private static readonly int VkCodeOffset =
         (int)Marshal.OffsetOf<NativeMethods.KBDLLHOOKSTRUCT>(nameof(NativeMethods.KBDLLHOOKSTRUCT.vkCode));
+    private static readonly int ScanCodeOffset =
+        (int)Marshal.OffsetOf<NativeMethods.KBDLLHOOKSTRUCT>(nameof(NativeMethods.KBDLLHOOKSTRUCT.scanCode));
     private static readonly int FlagsOffset =
         (int)Marshal.OffsetOf<NativeMethods.KBDLLHOOKSTRUCT>(nameof(NativeMethods.KBDLLHOOKSTRUCT.flags));
 
@@ -153,7 +156,8 @@ public sealed class KeyboardHook : IDisposable
                 if (down || up)
                 {
                     int vk = Marshal.ReadInt32(lParam, VkCodeOffset);
-                    try { KeyEvent?.Invoke(vk, down); }
+                    int scanCode = Marshal.ReadInt32(lParam, ScanCodeOffset);
+                    try { KeyEvent?.Invoke(vk, down, scanCode); }
                     catch (Exception ex) { InBackground(() => Logger.Error("Key handler failed", ex)); }
                 }
             }

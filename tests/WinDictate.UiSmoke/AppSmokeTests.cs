@@ -469,7 +469,7 @@ public class AppSmokeTests
             Assert.Equal(new System.Windows.Interop.WindowInteropHelper(first.Window).Handle, started.Window);
 
             // Focus has not moved: the text is inserted.
-            InsertResult inPlace = inserter.InsertAsync(stays, options, started).GetAwaiter().GetResult();
+            InsertResult inPlace = Ui.Wait(inserter.InsertAsync(stays, options, started));
             Ui.Pump(700);
             Assert.Equal(InsertOutcome.Inserted, inPlace.Outcome);
             Assert.Equal(stays, first.Box.Text);
@@ -484,7 +484,7 @@ public class AppSmokeTests
             Keyboard.Focus(second.Box);
             Ui.Pump(200);
 
-            InsertResult moved = inserter.InsertAsync(strays, options, started).GetAwaiter().GetResult();
+            InsertResult moved = Ui.Wait(inserter.InsertAsync(strays, options, started));
             Ui.Pump(700);
             Assert.Equal(InsertOutcome.CopiedOnly, moved.Outcome);
             Assert.Equal(RecoveryReason.TargetChanged, moved.Reason);
@@ -560,7 +560,7 @@ public class AppSmokeTests
             Assert.Equal(InsertOutcome.CopiedOnly, inserter.KeepForRecoveryAsync(waiting).GetAwaiter().GetResult().Outcome);
             inserter.RecoveryAnnounced();
             Ui.Pump(400); // time for anything else on this desktop to react to the clipboard change
-            InsertResult next = inserter.InsertAsync(typedNext, options, here).GetAwaiter().GetResult();
+            InsertResult next = Ui.Wait(inserter.InsertAsync(typedNext, options, here));
             Ui.Pump(700);
             Assert.Equal(InsertOutcome.Inserted, next.Outcome);
             Assert.True(next.Typed, "typed rather than pasted while text waits on the clipboard");
@@ -570,7 +570,7 @@ public class AppSmokeTests
 
             // 2. The user copies something else: pasting is back to normal.
             Assert.True(target.SetClipboardTextAsync("copied by the user").GetAwaiter().GetResult(), "writing to the clipboard");
-            InsertResult afterCopy = inserter.InsertAsync(pastedAfterCopy, options, here).GetAwaiter().GetResult();
+            InsertResult afterCopy = Ui.Wait(inserter.InsertAsync(pastedAfterCopy, options, here));
             Ui.Pump(700);
             Assert.Equal(InsertOutcome.Inserted, afterCopy.Outcome);
             Assert.False(afterCopy.Typed, "pasted as usual once the user has copied something else");
@@ -582,7 +582,7 @@ public class AppSmokeTests
             Assert.Equal(InsertOutcome.CopiedOnly, brief.KeepForRecoveryAsync(waiting).GetAwaiter().GetResult().Outcome);
             brief.RecoveryAnnounced();
             Ui.Pump(900);
-            InsertResult afterTime = brief.InsertAsync(pastedAfterTime, options, here).GetAwaiter().GetResult();
+            InsertResult afterTime = Ui.Wait(brief.InsertAsync(pastedAfterTime, options, here));
             Ui.Pump(700);
             Assert.Equal(InsertOutcome.Inserted, afterTime.Outcome);
             Assert.False(afterTime.Typed, "pasted as usual once the time to paste the waiting text is up");
@@ -609,12 +609,121 @@ public class AppSmokeTests
         }
     });
 
+    /// <summary>
+    /// A real paste into another program (Notepad): the dictation goes in, and the
+    /// user's clipboard is put back only after Notepad has taken the text.
+    /// </summary>
+    [Fact]
+    public void PastingIntoAnotherProgram_PutsTheClipboardBackOnlyAfterItHasTakenTheText() => Ui.Run(() =>
+    {
+        const string dictated = "Pasted into Notepad by WinDictate. ";
+        var target = new WindowsTextTarget();
+        ClipboardSnapshot saved = target.ReadClipboardAsync().GetAwaiter().GetResult();
+        Process? started = null;
+        IntPtr main = IntPtr.Zero;
+        try
+        {
+            started = Process.Start(new ProcessStartInfo("notepad.exe") { UseShellExecute = true });
+            var clock = Stopwatch.StartNew();
+            while (clock.ElapsedMilliseconds < 15000 && (main = Win32.FindWindowW("Notepad", null)) == IntPtr.Zero) Ui.Pump(250);
+            IntPtr edit = main == IntPtr.Zero ? IntPtr.Zero : Win32.FindWindowExW(main, IntPtr.Zero, "Edit", null);
+            if (edit == IntPtr.Zero)
+            {
+                Ui.Note("paste-into-another-program", "NOT CHECKED: classic Notepad with an Edit control is not available on this machine");
+                return;
+            }
+            for (int attempt = 0; attempt < 3 && Win32.GetForegroundWindow() != main; attempt++)
+            {
+                Win32.keybd_event(Win32.VK_MENU, 0, 0, UIntPtr.Zero);
+                Win32.keybd_event(Win32.VK_MENU, 0, Win32.KEYEVENTF_KEYUP, UIntPtr.Zero);
+                Win32.SetForegroundWindow(main);
+                Ui.Pump(400);
+            }
+            if (Win32.GetForegroundWindow() != main)
+            {
+                Ui.Note("paste-into-another-program", "NOT CHECKED: Notepad could not take the keyboard focus on this machine");
+                return;
+            }
+
+            Assert.True(target.SetClipboardTextAsync("the user's own text").GetAwaiter().GetResult(), "writing to the clipboard");
+            var inserter = new TextInserter(target);
+            var clockPaste = Stopwatch.StartNew();
+            InsertResult result = Ui.Wait(inserter.InsertAsync(dictated, new InsertOptions(TypeMode: false, ClipboardRestoreDelayMs: 300), target.CurrentTarget()));
+            clockPaste.Stop();
+            Ui.Pump(300);
+
+            Assert.Equal(InsertOutcome.Inserted, result.Outcome);
+            Assert.False(result.Typed, "pasted, not typed");
+            Assert.False(result.OnClipboard, "the clipboard was put back");
+            Assert.Contains(dictated.Trim(), Win32.TextOf(edit));
+            ClipboardSnapshot after = target.ReadClipboardAsync().GetAwaiter().GetResult();
+            Assert.Equal("the user's own text", after.Text);
+            Ui.Note("paste-into-another-program",
+                $"checked: the dictation was pasted into Notepad (another process) and the user's clipboard was put back after Notepad had read it ({clockPaste.ElapsedMilliseconds} ms in all)");
+        }
+        finally
+        {
+            if (main != IntPtr.Zero)
+            {
+                Win32.GetWindowThreadProcessId(main, out uint pid);
+                try { Process.GetProcessById((int)pid).Kill(); } catch { }
+            }
+            try { started?.Kill(); } catch { }
+            if (saved.Text != null) target.SetClipboardTextAsync(saved.Text).GetAwaiter().GetResult();
+        }
+    });
+
+    /// <summary>
+    /// Ctrl+V with no text field under the cursor: nothing reads the clipboard, so
+    /// the dictation stays there for the user (and the caller says to check).
+    /// </summary>
+    [Fact]
+    public void PastingWhereThereIsNoTextField_KeepsTheDictationOnTheClipboard() => Ui.Run(() =>
+    {
+        const string dictated = "Nowhere to paste this. ";
+        var button = new System.Windows.Controls.Button { Content = "No text field here", Width = 320, Height = 60, Margin = new Thickness(12) };
+        var window = new Window
+        {
+            Title = "WinDictate smoke: no text field",
+            Content = button,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            Topmost = true,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen
+        };
+        var target = new WindowsTextTarget();
+        ClipboardSnapshot saved = target.ReadClipboardAsync().GetAwaiter().GetResult();
+        try
+        {
+            window.Show();
+            if (!Ui.TakeForeground(window))
+            {
+                Ui.Note("paste-to-nowhere", "NOT CHECKED: the test window could not take the keyboard focus on this machine");
+                return;
+            }
+            button.Focus();
+            Ui.Pump(200);
+            Assert.True(target.SetClipboardTextAsync("the user's own text").GetAwaiter().GetResult(), "writing to the clipboard");
+
+            var inserter = new TextInserter(target);
+            InsertResult result = Ui.Wait(inserter.InsertAsync(dictated, new InsertOptions(TypeMode: false, ClipboardRestoreDelayMs: 300), target.CurrentTarget()));
+            Assert.Equal(InsertOutcome.CopiedOnly, result.Outcome);
+            Assert.Equal(RecoveryReason.MaybePasted, result.Reason);
+            Assert.Equal(dictated, target.ReadClipboardAsync().GetAwaiter().GetResult().Text);
+            Ui.Note("paste-to-nowhere", "checked: with no text field under the cursor nothing read the clipboard, so the dictation stayed there for the user instead of the clipboard being swapped back");
+        }
+        finally
+        {
+            window.Close();
+            if (saved.Text != null) target.SetClipboardTextAsync(saved.Text).GetAwaiter().GetResult();
+        }
+    });
+
     [Fact]
     public void KeyboardHook_Installs_IgnoresSyntheticKeys_AndStopsPromptly()
     {
         int seen = 0;
         var hook = new KeyboardHook();
-        hook.KeyEvent += (_, _) => Interlocked.Increment(ref seen);
+        hook.KeyEvent += (_, _, _) => Interlocked.Increment(ref seen);
         try
         {
             hook.Start();     // throws if Windows refuses the hook

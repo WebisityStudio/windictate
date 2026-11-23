@@ -31,14 +31,14 @@ Each dictation can be up to 5 minutes long. You can start the next dictation whi
 | "Copied. Press Ctrl+V" | The text could not be put in (for example Windows refused the keystrokes). It is on the clipboard: click where it should go and press Ctrl+V within 2 minutes |
 | "Focus moved. Press Ctrl+V" | You clicked into another window or field before the text was ready, so it was not typed there. Go back and press Ctrl+V |
 | "Partly typed. Check, then Ctrl+V" | Windows stopped accepting keystrokes part-way. Delete the partial text and press Ctrl+V |
-| "Check it arrived. If not, Ctrl+V" | Windows only partly accepted the paste. Look before pressing Ctrl+V, so you do not paste it twice |
+| "Check it arrived. If not, Ctrl+V" | The paste may not have gone in: no text field had the cursor, or Windows only partly accepted the keystrokes. Look first, so you do not paste it twice; if it is not there, click where it should go and press Ctrl+V |
 | "Microphone disconnected" | The headset was unplugged or stopped working. Reconnect it and dictate again |
 | "Microphone wasn't ready" / "Microphone not responding" | The microphone took too long to start. Wait for the moving bars before speaking, or choose another microphone in Settings |
 | "Cancelled" | You pressed another key, or Windows showed a security screen, while you were holding the shortcut |
 
 ## The text went nowhere?
 
-If you let go while the cursor was not in a text box, the paste may have had nowhere to go. Within 2 minutes, right-click the WinDictate icon in the notification area (next to the clock) and choose **Copy last dictation**, then click where it should go and press Ctrl+V.
+If you let go while the cursor was not in a text box, WinDictate notices that nothing took the text, says "Check it arrived. If not, Ctrl+V", and leaves it on the clipboard for 2 minutes. If a dictation went somewhere you did not mean, right-click the WinDictate icon in the notification area (next to the clock) within 2 minutes, choose **Copy last dictation**, then click where it should go and press Ctrl+V.
 
 ## The tray icon
 

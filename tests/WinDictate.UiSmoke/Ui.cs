@@ -79,6 +79,29 @@ internal static class Ui
         beat?.Stop();
     }
 
+    /// <summary>
+    /// Waits for <paramref name="task"/> while keeping this thread's windows
+    /// responsive, as a real application is: a paste into a window on this
+    /// thread can only be read once the thread processes its messages.
+    /// </summary>
+    public static T Wait<T>(Task<T> task, int timeoutMs = 20000)
+    {
+        var frame = new DispatcherFrame();
+        Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
+        task.ContinueWith(_ => dispatcher.BeginInvoke(() => frame.Continue = false), TaskScheduler.Default);
+        var limit = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(timeoutMs) };
+        limit.Tick += (_, _) =>
+        {
+            limit.Stop();
+            frame.Continue = false;
+        };
+        limit.Start();
+        if (!task.IsCompleted) Dispatcher.PushFrame(frame);
+        limit.Stop();
+        if (!task.IsCompleted) throw new TimeoutException($"Gave up waiting after {timeoutMs} ms.");
+        return task.GetAwaiter().GetResult();
+    }
+
     /// <summary>Feeds a speech-like microphone level for a while, as the recorder would.</summary>
     public static void Speak(Action<float> setLevel, int milliseconds)
     {
@@ -228,6 +251,33 @@ internal static class Win32
     /// <summary>Synthesises a key event (Windows marks it as injected).</summary>
     [DllImport("user32.dll")]
     public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr FindWindowW(string? className, string? windowName);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string? className, string? windowName);
+
+    public const uint WM_GETTEXT = 0x000D;
+    public const uint WM_GETTEXTLENGTH = 0x000E;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr SendMessageW(IntPtr hWnd, uint msg, IntPtr wParam, System.Text.StringBuilder lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr SendMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    /// <summary>The text of another program's edit control.</summary>
+    public static string TextOf(IntPtr control)
+    {
+        int length = (int)SendMessageW(control, WM_GETTEXTLENGTH, IntPtr.Zero, IntPtr.Zero);
+        var buffer = new System.Text.StringBuilder(length + 1);
+        SendMessageW(control, WM_GETTEXT, (IntPtr)(length + 1), buffer);
+        return buffer.ToString();
+    }
 
     [DllImport("user32.dll")]
     public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);

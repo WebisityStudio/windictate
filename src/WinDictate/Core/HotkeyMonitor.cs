@@ -146,9 +146,25 @@ public sealed class HotkeyMonitor
         }
     }
 
+    /// <summary>The scan code Windows gives the left-Ctrl event it adds when AltGr is pressed.</summary>
+    public const int AltGrControlScanCode = 0x21D;
+
+    /// <summary>
+    /// True for the left-Ctrl event Windows adds whenever AltGr is pressed on a
+    /// keyboard layout that has AltGr (UK and most European layouts): to Windows,
+    /// AltGr is Ctrl+Alt. That added event carries scan code 0x21D, while a real
+    /// left Ctrl key has 0x1D. It is not the user holding Ctrl, so typing an AltGr
+    /// character (for example € with AltGr+4) must never start a dictation.
+    /// </summary>
+    public static bool IsAltGrControl(int vk, int scanCode) => vk == 0xA2 && scanCode == AltGrControlScanCode;
+
     /// <summary>A key went down or up. Called on the hook thread, inside the hook callback.</summary>
-    public void OnKeyEvent(int vk, bool down)
+    /// <param name="scanCode">The event's scan code, when known; used to recognise AltGr.</param>
+    public void OnKeyEvent(int vk, bool down, int scanCode = 0)
     {
+        // AltGr's added Ctrl is ignored entirely, so AltGr alone is just "right Alt".
+        if (IsAltGrControl(vk, scanCode)) return;
+
         lock (_sync)
         {
             bool relevant = _required.Any(t => t.Contains(vk));

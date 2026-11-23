@@ -172,6 +172,9 @@ internal sealed class FakeTextTarget : ITextTarget
     public volatile bool InputBlocked;           // SendInput rejected (elevated window, secure desktop)
     public volatile bool TypingStopsPartWay;     // Windows accepts only the first keystrokes
     public volatile bool PasteStopsPartWay;      // Windows accepts only part of Ctrl+V (the V key did go down)
+    public volatile bool PasteGoesNowhere;       // Ctrl+V reaches no text field: nothing reads the clipboard
+    public volatile bool OtherProgramReadsFirst; // a clipboard manager reads each new offer before the paste
+    private FakeOffer? _offer;
     public Func<bool> KeysHeld { get; set; } = () => false;
 
     /// <summary>Return true to make a particular clipboard write fail.</summary>
@@ -223,6 +226,57 @@ internal sealed class FakeTextTarget : ITextTarget
         get { lock (_lock) return _sequence; }
     }
 
+    public Task<IPasteOffer?> OfferForPasteAsync(string text)
+    {
+        lock (_lock)
+        {
+            if (ClipboardFails || RejectWrite(text)) return Task.FromResult<IPasteOffer?>(null);
+            _otherFormats = false;
+            _clipboard = text;
+            _sequence++;
+            _offer = new FakeOffer(this, _sequence, text, OtherProgramReadsFirst);
+            return Task.FromResult<IPasteOffer?>(_offer);
+        }
+    }
+
+    /// <summary>Delayed-rendering offer: "read" when the fake paste takes the text.</summary>
+    private sealed class FakeOffer : IPasteOffer
+    {
+        private readonly FakeTextTarget _owner;
+        private readonly long _sequence;
+        private readonly bool _readFirstByOther;
+        public bool Read;
+
+        public FakeOffer(FakeTextTarget owner, long sequence, string text, bool readFirstByOther)
+        {
+            _owner = owner;
+            _sequence = sequence;
+            _readFirstByOther = readFirstByOther;
+        }
+
+        public void PasteSent() { }
+
+        public Task<PasteRead> WaitForReadAsync(int timeoutMs) =>
+            Task.FromResult(_readFirstByOther ? PasteRead.Unknown : Read ? PasteRead.Read : PasteRead.NotRead);
+
+        public Task<ReplaceResult> ReplaceWithAsync(string? text)
+        {
+            lock (_owner._lock)
+            {
+                if (_owner._sequence != _sequence) return Task.FromResult(ReplaceResult.LeftAlone);
+                if (_owner.ClipboardFails || (text != null && _owner.RejectWrite(text))) return Task.FromResult(ReplaceResult.Failed);
+                _owner._clipboard = text;
+                _owner._otherFormats = false;
+                _owner._sequence++;
+                return Task.FromResult(ReplaceResult.Replaced);
+            }
+        }
+
+        public Task<bool> KeepAsync() => Task.FromResult(true);
+
+        public void Dispose() { }
+    }
+
     public Task<bool> SetClipboardTextAsync(string text)
     {
         lock (_lock)
@@ -259,7 +313,11 @@ internal sealed class FakeTextTarget : ITextTarget
         lock (_lock)
         {
             if (InputBlocked) return SendResult.Failed;
-            _delivered.Add("paste:" + _clipboard);
+            if (!PasteGoesNowhere)
+            {
+                _delivered.Add("paste:" + _clipboard);
+                if (_offer != null) _offer.Read = true;
+            }
             return PasteStopsPartWay ? SendResult.Partial : SendResult.Sent;
         }
     }

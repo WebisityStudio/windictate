@@ -39,7 +39,7 @@ Full inventory with versions, licences and files: `04-Compliance/COMPONENT-INVEN
 3. **Recording.** Audio buffers (30 ms) are appended to a memory stream. The indicator appears once audio is really flowing. A watchdog ends a session whose key release never arrives (secure desktop, UAC prompt). Lock, sleep, a lost microphone or the 5-minute limit end it too.
 4. **Hotkey up.** The microphone is stopped and closed. Recordings shorter than 0.5 s, cancelled ones and ones without voiced audio are discarded (and their buffers overwritten) without being transcribed.
 5. **Transcription.** A queue processes one dictation at a time, in the order spoken, so a new recording can start while an earlier one is being recognised. The audio buffer is overwritten as soon as recognition finishes.
-6. **Insertion.** Waits until no recording is in progress and no modifier key is held. Checks that keyboard focus is still where the dictation started, then pastes (the clipboard is put back afterwards) or types. If the clipboard holds anything other than plain text, the text is typed instead so the clipboard is not touched. If insertion is impossible, the text is left on the clipboard with a notice and removed after 2 minutes.
+6. **Insertion.** Waits until no recording is in progress and no modifier key is held. Checks that keyboard focus is still where the dictation started, then pastes or types. A paste offers the text with Windows' delayed rendering, so WinDictate learns when the application reads it, and only then puts the user's clipboard back; if nothing reads it within 2 s, the text stays on the clipboard with a notice. If the clipboard holds anything other than plain text, the text is typed instead so the clipboard is not touched. If insertion is impossible, the text is left on the clipboard with a notice and removed after 2 minutes.
 7. **Exit.** Tray > Exit or `WinDictate.exe --exit`: the hook is removed, the queue stops (dictations not yet inserted are discarded), undelivered text is removed from the clipboard, the model is freed, and the process ends.
 
 ## Threads
@@ -66,8 +66,8 @@ Full inventory with versions, licences and files: `04-Compliance/COMPONENT-INVEN
 
 | Interface | Direction | Detail |
 |---|---|---|
-| Keyboard hook | Observe | Ctrl, Alt, Shift and Win state to detect the shortcut; any other key cancels a session. Keys are never recorded, changed or blocked. Injected keystrokes (including WinDictate's own) are ignored |
+| Keyboard hook | Observe | Ctrl, Alt, Shift and Win state to detect the shortcut; any other key cancels a session. AltGr's added Ctrl (scan code 0x21D) is ignored, so AltGr never counts as Ctrl+Alt. Keys are never recorded, changed or blocked. Injected keystrokes (including WinDictate's own) are ignored |
 | Focus query | Read | `GetGUIThreadInfo` (window and focused control) when the shortcut goes down and before inserting |
-| Clipboard | Read/write | Only to insert by paste and to put the user's content back. Writes are marked to stay out of clipboard history and cloud clipboard |
+| Clipboard | Read/write | Only to insert by paste and to put the user's content back. A paste uses delayed rendering (a short-lived message-only window owns the clipboard until the application has read the text). Writes are marked to stay out of clipboard history and cloud clipboard |
 | `SendInput` | Write | Ctrl+V, or the text as Unicode keystrokes, to the focused application |
 | Process name | Read | The product description of the target program, for the indicator ("Outlook"). Never the window title |

@@ -11,6 +11,8 @@ namespace WinDictate.Core;
 /// </summary>
 internal sealed class WindowsTextTarget : ITextTarget
 {
+    public Task<IPasteOffer?> OfferForPasteAsync(string text) => ClipboardOffer.OpenAsync(text);
+
     public Task<bool> SetClipboardTextAsync(string text) => ClipboardAccess.TrySetTextAsync(text);
 
     public Task<ClipboardSnapshot> ReadClipboardAsync() => ClipboardAccess.TryReadAsync();

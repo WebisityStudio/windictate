@@ -55,6 +55,66 @@ public class HotkeyMonitorTests
     /// <summary>The key goes up where the hook never sees it (secure desktop, UAC, elevated window).</summary>
     private void ReleaseUnseen(int vk) => _physicallyDown.Remove(vk);
 
+    // AltGr on UK and European layouts, as the hook sees it: Windows adds a left
+    // Ctrl (scan code 0x21D) just before right Alt, and releases both together.
+    private void PressAltGr()
+    {
+        _monitor.OnKeyEvent(LCtrl, true, HotkeyMonitor.AltGrControlScanCode);
+        _physicallyDown.Add(LCtrl);
+        _monitor.OnKeyEvent(RAlt, true, 0x38);
+        _physicallyDown.Add(RAlt);
+    }
+
+    private void ReleaseAltGr()
+    {
+        _monitor.OnKeyEvent(LCtrl, false, HotkeyMonitor.AltGrControlScanCode);
+        _physicallyDown.Remove(LCtrl);
+        _monitor.OnKeyEvent(RAlt, false, 0x38);
+        _physicallyDown.Remove(RAlt);
+    }
+
+    [Fact]
+    public void TypingWithAltGr_NeverStartsADictation()
+    {
+        // € on a UK keyboard: AltGr+4, twice.
+        for (int i = 0; i < 2; i++)
+        {
+            PressAltGr();
+            Press(0x34);
+            Release(0x34);
+            ReleaseAltGr();
+        }
+        Assert.Empty(_events); // the microphone was never opened
+    }
+
+    [Fact]
+    public void RealCtrl_WithAltGr_StillCounts()
+    {
+        Press(LCtrl);   // the left Ctrl key itself (scan code 0x1D)
+        PressAltGr();   // then AltGr: right Alt plus the added Ctrl, which is ignored
+        Assert.Equal(new[] { "start" }, _events);
+        ReleaseAltGr();
+        Assert.Equal(new[] { "start", "end" }, _events);
+    }
+
+    [Fact]
+    public void RightCtrlAndRightAlt_OnLayoutsWithoutAltGr_StillWork()
+    {
+        Press(RCtrl);
+        Press(RAlt);
+        Release(RAlt);
+        Assert.Equal(new[] { "start", "end" }, _events);
+    }
+
+    [Theory]
+    [InlineData(0xA2, 0x21D, true)]   // AltGr's added left Ctrl
+    [InlineData(0xA2, 0x1D, false)]   // the real left Ctrl key
+    [InlineData(0xA3, 0x1D, false)]   // right Ctrl
+    [InlineData(0xA5, 0x38, false)]   // right Alt itself
+    [InlineData(0xA2, 0, false)]      // scan code unknown
+    public void AltGrsAddedCtrl_IsRecognisedByItsScanCode(int vk, int scanCode, bool expected) =>
+        Assert.Equal(expected, HotkeyMonitor.IsAltGrControl(vk, scanCode));
+
     [Fact]
     public void HoldAndRelease_StartsThenEnds()
     {

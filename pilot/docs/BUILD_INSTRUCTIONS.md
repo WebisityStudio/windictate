@@ -46,4 +46,4 @@ Compare `01-Runtime/win-x64` file by file with `05-Release/SHA256SUMS.txt` of th
 
 ## Official build
 
-`.github/workflows/pilot-release.yml` builds this package on a fresh GitHub-hosted Windows virtual machine. It then tests the packaged program there: Windows smoke tests, offline transcription with the bundled model, a network audit, and install, uninstall and reinstall. It also runs a Microsoft Defender scan. The run's log and artefacts are the build record.
+`.github/workflows/pilot-release.yml` builds this package on a fresh GitHub-hosted Windows virtual machine. It then tests the packaged program there: Windows smoke tests, offline transcription with the bundled model, a network audit, and install, uninstall and reinstall. It also runs a Microsoft Defender scan, after removing the hosted image's scan exclusions and proving detection with the standard antivirus test file. The run's log and artefacts are the build record.

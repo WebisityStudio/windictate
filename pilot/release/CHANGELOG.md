@@ -18,7 +18,9 @@ First restricted pilot build, based on the open-source WinDictate after its reli
 - **Pilot-use notice** on first launch, which must be acknowledged; available again from About.
 - **About window**: version, build date, source commit, model hash and check result, the disabled features, licences.
 - **Clipboard always put back** after a paste. If the clipboard holds a picture, files or formatted text, the dictation is typed instead so nothing is lost. Dictated text is marked to stay out of Windows clipboard history and cloud clipboard. Text that could not be inserted is removed after 2 minutes and when WinDictate exits.
-- **Copy last dictation** (tray menu, for 2 minutes, memory only) for a paste that went nowhere.
+- **Paste confirmed before the clipboard is put back**: the dictation is offered with Windows' delayed rendering, and the user's clipboard comes back only after the application has read it, so a busy application never pastes the user's earlier clipboard instead. A paste that nothing reads (no text field under the cursor) keeps the dictation on the clipboard with a "check it arrived" notice.
+- **AltGr no longer opens the microphone**: the Ctrl key event Windows adds to AltGr is ignored, so typing € and other AltGr characters is not Ctrl+Alt.
+- **Copy last dictation** (tray menu, for 2 minutes, memory only) for a dictation that went somewhere unintended.
 - **Target application shown** in the indicator while recording (application name only, never the window title).
 - **Lost microphone handling**: an unplugged or silent device ends the recording at once with a notice; its audio is discarded.
 - **Audio buffers overwritten** after use.

@@ -287,6 +287,46 @@ public sealed class TextInserterTests
     }
 
     [Fact]
+    public async Task APasteThatNothingReads_LeavesTheTextOnTheClipboard_AndSaysToCheck()
+    {
+        _target.UserCopies("mine");
+        _target.PasteGoesNowhere = true; // the cursor was not in a text field
+        var result = await _inserter.InsertAsync("text ", Paste, Here, startedAt: _now);
+
+        Assert.Equal(InsertOutcome.CopiedOnly, result.Outcome);
+        Assert.Equal(RecoveryReason.MaybePasted, result.Reason);
+        Assert.Empty(_target.Delivered);
+        Assert.Equal("text ", _target.Clipboard); // never swapped back under a paste that may still come
+        _inserter.RecoveryAnnounced();
+
+        _now += 121_000;
+        Assert.True(await _inserter.ClearExpiredRecoveryAsync());
+        Assert.Equal("mine", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task WhenAnotherProgramReadsTheTextFirst_TheClipboardStillComesBack()
+    {
+        _target.UserCopies("mine");
+        _target.OtherProgramReadsFirst = true; // the paste's own read cannot be seen
+        var result = await _inserter.InsertAsync("text ", Paste, Here, startedAt: _now);
+
+        Assert.Equal(InsertOutcome.Inserted, result.Outcome);
+        Assert.Equal(new[] { "paste:text " }, _target.Delivered);
+        Assert.Equal("mine", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task TheUsersClipboard_ComesBackOnlyAfterThePasteHasTakenTheText()
+    {
+        _target.UserCopies("mine");
+        var result = await _inserter.InsertAsync("text ", Paste, Here, startedAt: _now);
+        Assert.Equal(InsertOutcome.Inserted, result.Outcome);
+        Assert.Equal(new[] { "paste:text " }, _target.Delivered); // the paste saw the dictation...
+        Assert.Equal("mine", _target.Clipboard);                  // ...and only then was the clipboard put back
+    }
+
+    [Fact]
     public async Task OlderUndeliveredText_NeverComesBack_WhenANewerOneReplacesIt()
     {
         _target.UserCopies("mine");
