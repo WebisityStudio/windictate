@@ -41,7 +41,7 @@ public partial class App : Application
 
         if (e.Args.Any(a => string.Equals(a, ExitArgument, StringComparison.OrdinalIgnoreCase)))
         {
-            Shutdown(AskRunningCopyToExit() ? 0 : 1);
+            Quit(AskRunningCopyToExit() ? 0 : 1);
             return;
         }
 
@@ -70,7 +70,7 @@ public partial class App : Application
         {
             Logger.Error("Cannot start: " + problem);
             MessageBox.Show(problem, "WinDictate", MessageBoxButton.OK, MessageBoxImage.Error);
-            Shutdown(2);
+            Quit(2);
             return;
         }
 
@@ -151,6 +151,17 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// Ends the app with this process exit code (0 normal, 1 a copy did not exit
+    /// in time, 2 this PC cannot run the speech engine, 3 speech model problem).
+    /// WPF's generated Main ignores Shutdown's code, so it is set explicitly.
+    /// </summary>
+    private void Quit(int exitCode)
+    {
+        Environment.ExitCode = exitCode;
+        Shutdown(exitCode);
+    }
+
+    /// <summary>
     /// Run as <c>WinDictate.exe --exit</c>: asks a running copy to exit cleanly
     /// and waits up to 10 seconds for it to finish.
     /// </summary>
@@ -196,7 +207,7 @@ public partial class App : Application
         MessageBox.Show("WinDictate cannot start dictation.\n\n" + message +
             "\n\nAsk IT to reinstall WinDictate Restricted Pilot. Expected file: models\\" + PilotModel.FileName +
             " (SHA-256 " + PilotModel.Sha256 + ").", "WinDictate", MessageBoxButton.OK, MessageBoxImage.Error);
-        Shutdown(3);
+        Quit(3);
     }
 
     private ModelCheck? ModelState =>
