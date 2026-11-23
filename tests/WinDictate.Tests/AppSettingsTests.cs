@@ -23,7 +23,7 @@ public class AppSettingsTests
           "LogTranscripts": false,
           "Cleanup": {
             "Enabled": false,
-            "BaseUrl": "https://api.openai.com/v1",
+            "BaseUrl": "https://cleanup.example.com/v1",
             "ApiKey": "",
             "Model": "gpt-4o-mini",
             "TimeoutSeconds": 12,

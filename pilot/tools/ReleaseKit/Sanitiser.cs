@@ -147,6 +147,7 @@ public static class Sanitiser
             foreach (Match m in Url.Matches(line))
             {
                 string host = m.Groups[1].Value.ToLowerInvariant().TrimEnd('.');
+                if (IsReservedExample(host)) continue; // can never be a real endpoint (RFC 2606 / RFC 6761)
                 bool known = allowedHosts.Contains(host) || allowedHosts.Any(h => host.EndsWith("." + h, StringComparison.Ordinal));
                 if (!known) Add("Web address outside the reviewed public hosts", m.Value, true);
             }
@@ -161,6 +162,13 @@ public static class Sanitiser
                 Add("Keyword for review: " + m.Value.ToLowerInvariant(), line.Trim(), false, "reviewed: see context");
         }
     }
+
+    /// <summary>Domains reserved for documentation and testing, which never belong to anyone.</summary>
+    private static bool IsReservedExample(string host) =>
+        host is "example.com" or "example.org" or "example.net" ||
+        host.EndsWith(".example.com", StringComparison.Ordinal) || host.EndsWith(".example.org", StringComparison.Ordinal) ||
+        host.EndsWith(".example.net", StringComparison.Ordinal) || host.EndsWith(".test", StringComparison.Ordinal) ||
+        host.EndsWith(".invalid", StringComparison.Ordinal) || host.EndsWith(".example", StringComparison.Ordinal);
 
     private static void ScanBinary(string file, string full, List<Finding> findings, string[] privateTerms, string[] machineMarkers)
     {
@@ -209,7 +217,7 @@ public static class Sanitiser
         sb.AppendLine($"- Files scanned: {FilesScanned} (plus {ArchiveEntriesScanned} text files inside the source snapshot ZIP)");
         sb.AppendLine($"- Private terms checked (supplied at build time, not recorded here): {PrivateTermCount}");
         sb.AppendLine("- Build machine user and computer names: checked in every text file and every binary");
-        sb.AppendLine("- Checks: personal Windows and home paths, network (UNC) paths, e-mail addresses, web addresses outside `pilot/sanitise-allowed-hosts.txt`, credential-like strings, sensitive file names, and the brief's keywords (API key, secret, password, token, connection string) for review");
+        sb.AppendLine("- Checks: personal Windows and home paths, network (UNC) paths, e-mail addresses, web addresses outside `pilot/sanitise-allowed-hosts.txt` (reserved example domains such as example.com are ignored), credential-like strings, sensitive file names, and the brief's keywords (API key, secret, password, token, connection string) for review");
         sb.AppendLine();
         var blocking = findings.Where(f => f.Blocking).ToList();
         sb.AppendLine($"## Blocking findings: {blocking.Count}");
