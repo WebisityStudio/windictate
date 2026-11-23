@@ -270,6 +270,20 @@ internal static class Win32
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetClipboardOwner();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassNameW(IntPtr hWnd, System.Text.StringBuilder className, int maxCount);
+
+    /// <summary>The window class of <paramref name="window"/> ("" if there is none).</summary>
+    public static string ClassOf(IntPtr window)
+    {
+        if (window == IntPtr.Zero) return "";
+        var name = new System.Text.StringBuilder(256);
+        return GetClassNameW(window, name, name.Capacity) > 0 ? name.ToString() : "";
+    }
+
     /// <summary>The text of another program's edit control.</summary>
     public static string TextOf(IntPtr control)
     {

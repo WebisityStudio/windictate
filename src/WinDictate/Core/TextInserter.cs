@@ -39,8 +39,9 @@ public enum RecoveryReason
     NotDelivered,  // keys held too long, input rejected, workstation locked since the dictation
     TargetChanged, // focus moved to another window or field since the hotkey was pressed
     PartlyTyped,   // Windows stopped accepting keystrokes part-way through
-    MaybePasted,   // Windows took only part of Ctrl+V: the paste may or may not have happened
-    Requested      // the user asked for the last dictation to be copied
+    MaybePasted,   // Windows took only part of Ctrl+V, or nothing read the clipboard: the paste may or may not have happened
+    Requested,     // the user asked for the last dictation to be copied
+    ClipboardChanged // Lost: another program put something on the clipboard before the paste read the dictation; that was left alone
 }
 
 public sealed record InsertResult(
@@ -84,7 +85,11 @@ public enum PasteRead
     NotRead,
 
     /// <summary>Another program read the text before Ctrl+V, so the paste's own read cannot be seen.</summary>
-    Unknown
+    Unknown,
+
+    /// <summary>Another program put something new on the clipboard before anything read the text:
+    /// the paste did not take the dictation.</summary>
+    Replaced
 }
 
 public enum ReplaceResult
@@ -165,7 +170,9 @@ public sealed record InsertOptions(bool TypeMode, int ClipboardRestoreDelayMs)
 /// "paste" mode (default): the user's clipboard is read, the transcript is
 /// offered on the clipboard, Ctrl+V is sent, and once the application has read
 /// the text the user's clipboard is put back. If nothing reads it within 2
-/// seconds (no text field had the cursor), it is treated as undelivered. Putting
+/// seconds (no text field had the cursor), it is treated as undelivered; if
+/// another program puts something on the clipboard before the paste reads it,
+/// that is left alone and the dictation is reported as not pasted. Putting
 /// back only works exactly for plain text, so when the clipboard holds anything else
 /// (a picture, files, formatted text from Word or a web page) or cannot be read,
 /// the transcript is typed instead and the clipboard is not touched at all. If
@@ -270,6 +277,11 @@ public sealed class TextInserter
         {
             bool append = RecoveryIsProtected(startedAt);
             ClipboardSnapshot? before = append ? null : await _target.ReadClipboardAsync().ConfigureAwait(false);
+            // A paste refused because a key went down can leave this transcript on the clipboard
+            // (when putting the user's content back failed): what goes back later is the user's
+            // copy saved then, not the transcript.
+            if (before != null && _savedPrevious is { } saved && saved.ForText == text && (!before.Readable || before.Text == text))
+                before = saved.Previous;
             return await KeepForRecoveryAsync(text, append, reason, before).ConfigureAwait(false);
         }
         finally
@@ -458,6 +470,14 @@ public sealed class TextInserter
         // a busy application that reads the clipboard late must never paste the
         // user's earlier content instead of the dictation.
         PasteRead read = await offer.WaitForReadAsync(PasteReadTimeoutMs).ConfigureAwait(false);
+        if (read == PasteRead.Replaced)
+        {
+            // Something new was put on the clipboard before the paste read the text: the paste
+            // cannot have taken the dictation, and what is there now must not be overwritten.
+            // The caller offers the dictation another way (Copy last dictation).
+            AfterRestore(ReplaceResult.LeftAlone, recoveryUnderneath);
+            return new InsertResult(InsertOutcome.Lost, Reason: RecoveryReason.ClipboardChanged);
+        }
         if (read == PasteRead.NotRead)
         {
             // Nothing took the text: most likely no text field had the cursor. It stays on
@@ -469,11 +489,13 @@ public sealed class TextInserter
         ReplaceResult restore = await offer.ReplaceWithAsync(previous.Text).ConfigureAwait(false);
         AfterRestore(restore, recoveryUnderneath);
         bool restored = restore != ReplaceResult.Failed;
-        if (!restored && await offer.KeepAsync().ConfigureAwait(false))
+        if (!restored)
         {
-            // The transcript is still on the clipboard. Treat it like undelivered
-            // text so that it is removed (and the user's text put back) when its
-            // time is up, but do not make later dictations work around it.
+            // The transcript is still on the clipboard (it has been read, so it is ordinary
+            // text there). Treat it like undelivered text so that it is removed (and the
+            // user's text put back) when its time is up, but do not make later dictations
+            // work around it. If something else replaces it first, that is left alone.
+            await offer.KeepAsync().ConfigureAwait(false);
             _recoveryText = text;
             _recoveryCount = 1;
             _recoverySequence = _target.ClipboardSequence;

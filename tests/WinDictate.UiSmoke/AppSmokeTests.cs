@@ -718,6 +718,59 @@ public class AppSmokeTests
         }
     });
 
+    /// <summary>
+    /// Another program copies something while a dictation waits on the clipboard for a
+    /// paste that nothing reads: the new content is left alone, never overwritten.
+    /// </summary>
+    [Fact]
+    public void SomethingCopiedDuringAPaste_IsNeverOverwritten() => Ui.Run(() =>
+    {
+        const string dictated = "Never written over a new copy. ";
+        var button = new System.Windows.Controls.Button { Content = "No text field here", Width = 320, Height = 60, Margin = new Thickness(12) };
+        var window = new Window
+        {
+            Title = "WinDictate smoke: copy during a paste",
+            Content = button,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            Topmost = true,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen
+        };
+        var target = new WindowsTextTarget();
+        ClipboardSnapshot saved = target.ReadClipboardAsync().GetAwaiter().GetResult();
+        try
+        {
+            window.Show();
+            if (!Ui.TakeForeground(window))
+            {
+                Ui.Note("copy-during-paste", "NOT CHECKED: the test window could not take the keyboard focus on this machine");
+                return;
+            }
+            button.Focus();
+            Ui.Pump(200);
+            Assert.True(target.SetClipboardTextAsync("the user's own text").GetAwaiter().GetResult(), "writing to the clipboard");
+
+            var inserter = new TextInserter(target);
+            Task<InsertResult> pasting = inserter.InsertAsync(dictated, new InsertOptions(TypeMode: false, ClipboardRestoreDelayMs: 300), target.CurrentTarget());
+            // As soon as the dictation is offered on the clipboard, copy something else, as another program would.
+            var clock = Stopwatch.StartNew();
+            while (clock.ElapsedMilliseconds < 3000 && !pasting.IsCompleted && Win32.ClassOf(Win32.GetClipboardOwner()) != "WinDictatePasteOffer")
+                Ui.Pump(5);
+            Assert.Equal("WinDictatePasteOffer", Win32.ClassOf(Win32.GetClipboardOwner()));
+            Assert.True(new WindowsTextTarget().SetClipboardTextAsync("copied meanwhile").GetAwaiter().GetResult(), "copying meanwhile");
+            InsertResult result = Ui.Wait(pasting);
+
+            Assert.Equal(InsertOutcome.Lost, result.Outcome);
+            Assert.Equal(RecoveryReason.ClipboardChanged, result.Reason);
+            Assert.Equal("copied meanwhile", target.ReadClipboardAsync().GetAwaiter().GetResult().Text);
+            Ui.Note("copy-during-paste", "checked: something copied while the dictation waited on the clipboard was left alone, and the dictation was reported as not pasted");
+        }
+        finally
+        {
+            window.Close();
+            if (saved.Text != null) target.SetClipboardTextAsync(saved.Text).GetAwaiter().GetResult();
+        }
+    });
+
     [Fact]
     public void KeyboardHook_Installs_IgnoresSyntheticKeys_AndStopsPromptly()
     {

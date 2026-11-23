@@ -224,6 +224,7 @@ public class IndicatorCuesTests
     [InlineData("Speech model problem", "Speech model problem", NoticeKind.Warning)]
     [InlineData("Copied · last dictation in clipboard — press Ctrl+V", "Copied. Press Ctrl+V", NoticeKind.Info)]
     [InlineData("Couldn't insert or copy — please dictate again", "Couldn't insert. Dictate again", NoticeKind.Warning)]
+    [InlineData("Clipboard changed · not pasted — use Copy last dictation in the tray menu", "Not pasted. Use Copy last dictation", NoticeKind.Warning)]
     [InlineData("Error, see log", "Something went wrong", NoticeKind.Warning)]
     public void Problems_GetOnePlainLine(string result, string expected, NoticeKind kind)
     {

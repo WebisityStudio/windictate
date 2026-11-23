@@ -32,6 +32,7 @@ Each dictation can be up to 5 minutes long. You can start the next dictation whi
 | "Focus moved. Press Ctrl+V" | You clicked into another window or field before the text was ready, so it was not typed there. Go back and press Ctrl+V |
 | "Partly typed. Check, then Ctrl+V" | Windows stopped accepting keystrokes part-way. Delete the partial text and press Ctrl+V |
 | "Check it arrived. If not, Ctrl+V" | The paste may not have gone in: no text field had the cursor, or Windows only partly accepted the keystrokes. Look first, so you do not paste it twice; if it is not there, click where it should go and press Ctrl+V |
+| "Not pasted. Use Copy last dictation" | Something else was copied just as the text was being pasted, so WinDictate left the clipboard alone. Right-click the WinDictate icon next to the clock, choose **Copy last dictation** (within 2 minutes), then click where the text should go and press Ctrl+V |
 | "Microphone disconnected" | The headset was unplugged or stopped working. Reconnect it and dictate again |
 | "Microphone wasn't ready" / "Microphone not responding" | The microphone took too long to start. Wait for the moving bars before speaking, or choose another microphone in Settings |
 | "Cancelled" | You pressed another key, or Windows showed a security screen, while you were holding the shortcut |

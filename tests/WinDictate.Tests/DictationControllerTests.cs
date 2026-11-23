@@ -772,6 +772,23 @@ public sealed class DictationControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task SomethingCopiedJustAsADictationIsPasted_IsLeftAlone_AndTheDictationCanStillBeCopied()
+    {
+        _target.UserCopies("my own text");
+        _target.PasteGoesNowhere = true;
+        _target.SomeoneCopiesDuringPaste = true;
+        await DictateAsync("A");
+        await WaitFor(() => OverlayShowed("notice:Clipboard changed · not pasted — use Copy last dictation in the tray menu"), "the notice");
+        Assert.Equal("copied meanwhile", _target.Clipboard);
+        Assert.Empty(_target.Delivered);
+
+        _target.SomeoneCopiesDuringPaste = false;
+        Assert.True(Controller.CanCopyLastDictation);
+        Assert.True(await Controller.CopyLastDictationAsync());
+        Assert.Equal("Text A. ", _target.Clipboard);
+    }
+
+    [Fact]
     public async Task UndeliveredText_IsRemovedFromTheClipboard_WhenItsTimeIsUp()
     {
         _timings = Fast with { RecoveryClearMs = 300 };

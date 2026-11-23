@@ -643,6 +643,13 @@ public sealed class DictationController : IDisposable
                     _ => $"Not inserted · {held} in clipboard — press Ctrl+V"
                 }, recovery: true);
                 break;
+            case InsertOutcome.Lost when result.Reason == RecoveryReason.ClipboardChanged:
+                // Another program put something on the clipboard just before the paste read the
+                // dictation. That was left alone; the dictation can still be copied from the tray.
+                Logger.Warn($"Did not insert {words} words: the clipboard changed before the paste read them; left the clipboard alone");
+                RememberLast(job.Text);
+                PipelineNotice("Clipboard changed · not pasted — use Copy last dictation in the tray menu");
+                break;
             default:
                 Logger.Error("Could not insert or copy a dictation");
                 PipelineNotice("Couldn't insert or copy — please dictate again");

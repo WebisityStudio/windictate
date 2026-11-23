@@ -30,6 +30,7 @@ WinDictate Restricted Pilot {{VERSION}}, commit `{{COMMIT_SHORT}}`. Each control
 | Clipboard not left holding dictations | Restored after each paste; undelivered text removed after 2 minutes and at exit; excluded from history and cloud | Unit tests in `TextInserterTests` and `DictationControllerTests`; Windows tests `Clipboard_RoundTrips_WithoutTheUiThread` (markers present) and `TextWaitingOnTheClipboard_…`; UAT C-1 to C-5 |
 | Clipboard content of the user preserved | Text restored; non-text content never replaced (dictation typed instead) | Unit tests `PictureOnTheClipboard_…`, `FormattedTextOnTheClipboard_…`; Windows test `APictureOnTheClipboard_SurvivesADictation`; UAT C-2 |
 | Never the wrong text pasted | The user's clipboard is put back only after the application has read the dictation (delayed rendering); a paste nothing reads keeps the dictation on the clipboard with a notice | Unit tests `TheUsersClipboard_ComesBackOnlyAfterThePasteHasTakenTheText`, `APasteThatNothingReads_…`; Windows tests `PastingIntoAnotherProgram_…` (Notepad) and `PastingWhereThereIsNoTextField_…`; UAT C-6, C-8 |
+| A new copy is never overwritten | Anything copied while a dictation waits on the clipboard is left alone; WinDictate checks it still owns the clipboard, with the clipboard open, before every change | Unit tests `SomethingCopiedBeforeThePasteReadTheText_IsLeftAlone`, `SomethingCopiedJustAsADictationIsPasted_…`; Windows test `SomethingCopiedDuringAPaste_IsNeverOverwritten` |
 
 ## 4. Text goes only where it was dictated
 

@@ -317,6 +317,38 @@ public sealed class TextInserterTests
     }
 
     [Fact]
+    public async Task SomethingCopiedBeforeThePasteReadTheText_IsLeftAlone()
+    {
+        _target.UserCopies("mine");
+        _target.PasteGoesNowhere = true;         // nothing has read the dictation yet...
+        _target.SomeoneCopiesDuringPaste = true; // ...when another program puts something new on the clipboard
+        var result = await _inserter.InsertAsync("text ", Paste, Here, startedAt: _now);
+
+        Assert.Equal(InsertOutcome.Lost, result.Outcome);
+        Assert.Equal(RecoveryReason.ClipboardChanged, result.Reason);
+        Assert.Equal("copied meanwhile", _target.Clipboard); // neither the dictation nor the older text written over it
+        Assert.False(await _inserter.ClearRecoveryNowAsync()); // nothing of WinDictate's to remove later either
+        Assert.Equal("copied meanwhile", _target.Clipboard);
+    }
+
+    [Fact]
+    public async Task KeptAfterAKeyStayedHeld_PutsBackTheUsersText_EvenWhenTheFirstRestoreFailed()
+    {
+        _target.UserCopies("old copy");
+        _target.KeysHeld = () => true;
+        bool refuse = true;
+        _target.RejectWrite = text => text == "old copy" && refuse;
+        await _inserter.InsertAsync("text ", PasteAndRestore, Here, startedAt: _now);
+        Assert.Equal("text ", _target.Clipboard); // putting the user's text back failed
+
+        refuse = false;
+        var kept = await _inserter.KeepForRecoveryAsync("text ", startedAt: _now); // the key stayed held too long
+        Assert.Equal(InsertOutcome.CopiedOnly, kept.Outcome);
+        Assert.True(await _inserter.ClearRecoveryNowAsync());
+        Assert.Equal("old copy", _target.Clipboard); // the user's own text, not the transcript
+    }
+
+    [Fact]
     public async Task TheUsersClipboard_ComesBackOnlyAfterThePasteHasTakenTheText()
     {
         _target.UserCopies("mine");

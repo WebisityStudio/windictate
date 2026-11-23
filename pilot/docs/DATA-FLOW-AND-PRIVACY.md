@@ -39,6 +39,7 @@ Dictations still in the queue when WinDictate exits are discarded.
 | Clipboard holds a picture, files, formatted text or anything besides plain text | WinDictate cannot restore that exactly, so it types the text instead and does not touch the clipboard |
 | Clipboard cannot be read | Text is typed instead |
 | Another program reads the clipboard before the paste (for example a clipboard manager) | The paste's own read cannot be seen; the previous content is put back after 1.5 s |
+| Something new is copied before the paste has read the transcript | The new content is left alone, never overwritten. The transcript was not pasted; the notice says so, and **Copy last dictation** has it for 2 minutes (memory only) |
 | Type mode (setting) | The clipboard is never used, unless insertion fails |
 | Insertion fails (focus moved, keys held, input blocked, PC locked since the dictation) | The text is left on the clipboard and a notice says "Press Ctrl+V". Later dictations leave it alone for 30 s. After 2 minutes it is removed and the previous plain-text content is put back (or the clipboard is cleared). If the user copies something else meanwhile, WinDictate leaves the clipboard alone |
 | WinDictate exits | Any undelivered text still on the clipboard is removed |

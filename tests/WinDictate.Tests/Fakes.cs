@@ -174,6 +174,7 @@ internal sealed class FakeTextTarget : ITextTarget
     public volatile bool PasteStopsPartWay;      // Windows accepts only part of Ctrl+V (the V key did go down)
     public volatile bool PasteGoesNowhere;       // Ctrl+V reaches no text field: nothing reads the clipboard
     public volatile bool OtherProgramReadsFirst; // a clipboard manager reads each new offer before the paste
+    public volatile bool SomeoneCopiesDuringPaste; // another program copies something just after Ctrl+V is sent
     private FakeOffer? _offer;
     public Func<bool> KeysHeld { get; set; } = () => false;
 
@@ -256,8 +257,16 @@ internal sealed class FakeTextTarget : ITextTarget
 
         public void PasteSent() { }
 
-        public Task<PasteRead> WaitForReadAsync(int timeoutMs) =>
-            Task.FromResult(_readFirstByOther ? PasteRead.Unknown : Read ? PasteRead.Read : PasteRead.NotRead);
+        public Task<PasteRead> WaitForReadAsync(int timeoutMs)
+        {
+            lock (_owner._lock)
+            {
+                if (_readFirstByOther) return Task.FromResult(PasteRead.Unknown);
+                if (Read) return Task.FromResult(PasteRead.Read);
+                // Not read: replaced if someone else has written to the clipboard since the offer.
+                return Task.FromResult(_owner._sequence != _sequence ? PasteRead.Replaced : PasteRead.NotRead);
+            }
+        }
 
         public Task<ReplaceResult> ReplaceWithAsync(string? text)
         {
@@ -317,6 +326,12 @@ internal sealed class FakeTextTarget : ITextTarget
             {
                 _delivered.Add("paste:" + _clipboard);
                 if (_offer != null) _offer.Read = true;
+            }
+            if (SomeoneCopiesDuringPaste)
+            {
+                _clipboard = "copied meanwhile";
+                _otherFormats = false;
+                _sequence++;
             }
             return PasteStopsPartWay ? SendResult.Partial : SendResult.Sent;
         }

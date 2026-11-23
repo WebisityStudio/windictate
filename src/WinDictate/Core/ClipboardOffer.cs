@@ -17,8 +17,9 @@ namespace WinDictate.Core;
 /// A read after Ctrl+V was sent counts as the paste, whichever process makes
 /// it (Teams and the new Outlook read through a separate WebView2 process). If
 /// another program reads the text before Ctrl+V (a clipboard manager), later
-/// reads can no longer be seen, and the caller falls back to a fixed wait.
-/// Clipboard contents are never logged.
+/// reads can no longer be seen, and the caller falls back to a fixed wait. If
+/// another program puts something new on the clipboard, that is never
+/// overwritten. Clipboard contents are never logged.
 /// </summary>
 internal sealed class ClipboardOffer : IPasteOffer
 {
@@ -31,6 +32,7 @@ internal sealed class ClipboardOffer : IPasteOffer
     private readonly string _text;
     private readonly TaskCompletionSource<bool> _opened = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _readAfterPaste = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _replaced = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Queue<Action> _work = new();
     private readonly Thread _thread;
     private IntPtr _window;
@@ -38,6 +40,8 @@ internal sealed class ClipboardOffer : IPasteOffer
     private volatile bool _closed;
     private volatile bool _pasteSent;
     private volatile bool _readBeforePaste;  // rendered for someone else first: later reads are invisible
+    private volatile bool _promised;         // the text is announced on the clipboard but not rendered yet
+    private volatile bool _handedOver;       // the caller has the offer (false: it gave up waiting and typed instead)
 
     private ClipboardOffer(string text)
     {
@@ -59,6 +63,7 @@ internal sealed class ClipboardOffer : IPasteOffer
             return null;
         }
         await Task.Delay(SettleMs).ConfigureAwait(false);
+        offer._handedOver = true;
         return offer;
     }
 
@@ -71,18 +76,21 @@ internal sealed class ClipboardOffer : IPasteOffer
             Logger.Info("Another program read the clipboard before the paste; the paste's own read cannot be seen");
             return PasteRead.Unknown;
         }
-        var finished = await Task.WhenAny(_readAfterPaste.Task, Task.Delay(Math.Max(0, timeoutMs))).ConfigureAwait(false);
-        return finished == _readAfterPaste.Task ? PasteRead.Read : PasteRead.NotRead;
+        await Task.WhenAny(_readAfterPaste.Task, _replaced.Task, Task.Delay(Math.Max(0, timeoutMs))).ConfigureAwait(false);
+        if (_readAfterPaste.Task.IsCompleted) return PasteRead.Read;
+        return _replacedBySomeoneElse ? PasteRead.Replaced : PasteRead.NotRead;
     }
 
     public Task<ReplaceResult> ReplaceWithAsync(string? text) => OnThread(() =>
     {
-        if (_replacedBySomeoneElse || Win32.GetClipboardOwner() != _window)
-            return ReplaceResult.LeftAlone; // someone else's content is on the clipboard now
+        if (_replacedBySomeoneElse) return ReplaceResult.LeftAlone; // someone else's content is on the clipboard now
         if (!OpenClipboardWithRetry()) return ReplaceResult.Failed;
         try
         {
+            // Checked with the clipboard open, so nobody can put something new on it in between.
+            if (_replacedBySomeoneElse || Win32.GetClipboardOwner() != _window) return ReplaceResult.LeftAlone;
             if (!Win32.EmptyClipboard()) return ReplaceResult.Failed;
+            _promised = false;
             if (text != null && !PutText(text)) return ReplaceResult.Failed;
             PutPrivacyMarkers();
             return ReplaceResult.Replaced;
@@ -95,13 +103,17 @@ internal sealed class ClipboardOffer : IPasteOffer
 
     public Task<bool> KeepAsync() => OnThread(() =>
     {
-        if (_replacedBySomeoneElse || Win32.GetClipboardOwner() != _window) return false;
+        if (_replacedBySomeoneElse) return false;
         if (!OpenClipboardWithRetry()) return false;
         try
         {
+            if (_replacedBySomeoneElse || Win32.GetClipboardOwner() != _window) return false;
+            if (!_promised) return true; // already read, so already ordinary clipboard text
             // Rendering it now turns the announcement into ordinary clipboard text,
             // which stays after this offer's window is gone.
-            return PutText(_text);
+            if (!PutText(_text)) return false;
+            _promised = false;
+            return true;
         }
         finally
         {
@@ -131,26 +143,40 @@ internal sealed class ClipboardOffer : IPasteOffer
                 if (_window != IntPtr.Zero) Win32.DestroyWindow(_window);
                 return;
             }
-            bool ok;
+            bool ok = false;
             try
             {
-                bool emptied = Win32.EmptyClipboard();
-                // Delayed rendering: no data yet. Windows asks this window for it when someone
-                // reads it. (The call returns NULL even when it succeeds, so check the error.)
-                Win32.SetClipboardData(Win32.CF_UNICODETEXT, IntPtr.Zero);
-                ok = emptied && Marshal.GetLastWin32Error() == 0;
-                if (ok) PutPrivacyMarkers();
+                if (Win32.EmptyClipboard())
+                {
+                    // Delayed rendering: no data yet. Windows asks this window for it when
+                    // someone reads it. (SetClipboardData returns NULL even when this works,
+                    // so check that the text is announced instead.)
+                    Win32.SetClipboardData(Win32.CF_UNICODETEXT, IntPtr.Zero);
+                    ok = Win32.IsClipboardFormatAvailable(Win32.CF_UNICODETEXT);
+                    if (ok)
+                    {
+                        _promised = true;
+                        PutPrivacyMarkers();
+                    }
+                    else
+                    {
+                        Logger.Warn($"Could not offer text on the clipboard (error {Marshal.GetLastWin32Error()}); it is now empty");
+                    }
+                }
             }
             finally
             {
                 Win32.CloseClipboard();
             }
-            _opened.TrySetResult(ok);
-            if (!ok)
+            if (!ok || _closed)
             {
+                // Not offered, or the caller stopped waiting meanwhile and typed the text:
+                // destroying the window withdraws an offer nobody will follow up.
+                _opened.TrySetResult(false);
                 Win32.DestroyWindow(_window);
                 return;
             }
+            _opened.TrySetResult(true);
 
             while (Win32.GetMessageW(out var message, IntPtr.Zero, 0, 0) > 0)
             {
@@ -181,22 +207,37 @@ internal sealed class ClipboardOffer : IPasteOffer
         switch (message)
         {
             case Win32.WM_RENDERFORMAT:
+                // Someone is reading the text (the clipboard is open for them: do not open it).
                 if ((uint)wParam.ToInt64() == Win32.CF_UNICODETEXT)
                 {
-                    PutText(_text);
+                    if (PutText(_text)) _promised = false;
                     if (_pasteSent) _readAfterPaste.TrySetResult();
                     else _readBeforePaste = true;
                 }
                 return IntPtr.Zero;
 
             case Win32.WM_RENDERALLFORMATS:
-                // The window is going away while the text was only announced: render it,
-                // so the clipboard is never left with a promise nobody can keep.
-                if (Win32.OpenClipboard(window))
+                // The window is going away while the text is only announced. If the caller
+                // has the offer, render it, so the clipboard is never left with a promise
+                // nobody can keep. If the caller gave up waiting for the offer (and typed
+                // the text instead), withdraw it.
+                if (_promised && Win32.OpenClipboard(window))
                 {
                     try
                     {
-                        if (Win32.GetClipboardOwner() == window) PutText(_text);
+                        if (Win32.GetClipboardOwner() == window)
+                        {
+                            if (_handedOver)
+                            {
+                                if (PutText(_text)) _promised = false;
+                            }
+                            else
+                            {
+                                Win32.EmptyClipboard();
+                                _promised = false;
+                                Logger.Warn("Withdrew a clipboard offer that was ready too late");
+                            }
+                        }
                     }
                     finally
                     {
@@ -207,7 +248,12 @@ internal sealed class ClipboardOffer : IPasteOffer
 
             case Win32.WM_DESTROYCLIPBOARD:
                 // Emptied by whoever is putting something new on it (or by us, replacing it).
-                if (!Win32.InOwnReplace) _replacedBySomeoneElse = true;
+                _promised = false;
+                if (!Win32.InOwnReplace)
+                {
+                    _replacedBySomeoneElse = true;
+                    _replaced.TrySetResult();
+                }
                 return IntPtr.Zero;
 
             case Win32.WM_APP_RUN:
@@ -466,6 +512,10 @@ internal sealed class ClipboardOffer : IPasteOffer
 
         [DllImport("user32.dll")]
         public static extern IntPtr GetClipboardOwner();
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool IsClipboardFormatAvailable(uint format);
 
         [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern uint RegisterClipboardFormatW(string format);
