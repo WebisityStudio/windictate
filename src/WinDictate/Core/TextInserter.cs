@@ -367,6 +367,9 @@ public sealed class TextInserter
         }
 
         bool recoveryUnderneath = IsOurRecoveryOnClipboard();
+        // If this paste fails, what goes back on the clipboard later is the user's own
+        // content: when older undelivered text is underneath, what preceded that.
+        ClipboardSnapshot? usersContent = recoveryUnderneath ? _beforeRecovery : previous;
         if (!await _target.SetClipboardTextAsync(text).ConfigureAwait(false))
         {
             // Ctrl+V would paste whatever is on the clipboard now: type the text instead.
@@ -375,7 +378,7 @@ public sealed class TextInserter
         long ours = _target.ClipboardSequence;
 
         if (!target.Matches(_target.CurrentTarget()))
-            return await KeepForRecoveryAsync(text, false, RecoveryReason.TargetChanged, previous).ConfigureAwait(false);
+            return await KeepForRecoveryAsync(text, false, RecoveryReason.TargetChanged, usersContent).ConfigureAwait(false);
 
         var sent = _target.SendPaste();
         if (sent == SendResult.KeysHeld)
@@ -386,9 +389,9 @@ public sealed class TextInserter
             return new InsertResult(InsertOutcome.KeysHeld);
         }
         if (sent == SendResult.Partial)
-            return await KeepForRecoveryAsync(text, false, RecoveryReason.MaybePasted, previous).ConfigureAwait(false);
+            return await KeepForRecoveryAsync(text, false, RecoveryReason.MaybePasted, usersContent).ConfigureAwait(false);
         if (sent != SendResult.Sent)
-            return await KeepForRecoveryAsync(text, false, RecoveryReason.NotDelivered, previous).ConfigureAwait(false);
+            return await KeepForRecoveryAsync(text, false, RecoveryReason.NotDelivered, usersContent).ConfigureAwait(false);
 
         _savedPrevious = null;
         // The target app reads the clipboard after it receives Ctrl+V, so wait
@@ -404,7 +407,7 @@ public sealed class TextInserter
             _recoveryCount = 1;
             _recoverySequence = ours;
             _recoveredAt = _clock();
-            _beforeRecovery = previous;
+            _beforeRecovery = usersContent;
             _protected = false;
         }
         return new InsertResult(InsertOutcome.Inserted, OnClipboard: !restored, ClipboardNotRestored: !restored);

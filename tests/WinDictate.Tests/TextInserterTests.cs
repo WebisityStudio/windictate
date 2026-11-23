@@ -287,6 +287,25 @@ public sealed class TextInserterTests
     }
 
     [Fact]
+    public async Task OlderUndeliveredText_NeverComesBack_WhenANewerOneReplacesIt()
+    {
+        _target.UserCopies("mine");
+        await UndeliveredAsync("older ");
+        _now += 31_000; // the older text is no longer protected, but still on the clipboard
+
+        var other = new InsertionTarget(new IntPtr(43), new IntPtr(9));
+        _target.Current = () => other; // focus moves away before the next paste
+        var result = await _inserter.InsertAsync("newer ", Paste, Here, startedAt: _now);
+        Assert.Equal(RecoveryReason.TargetChanged, result.Reason);
+        Assert.Equal("newer ", _target.Clipboard);
+        _inserter.RecoveryAnnounced();
+
+        _now += 121_000;
+        Assert.True(await _inserter.ClearExpiredRecoveryAsync());
+        Assert.Equal("mine", _target.Clipboard); // the user's own text, not the older dictation
+    }
+
+    [Fact]
     public async Task AFailedRestore_IsTriedAgainLater_SoTheTranscriptDoesNotLinger()
     {
         _target.UserCopies("mine");
