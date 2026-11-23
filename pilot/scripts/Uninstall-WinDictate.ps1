@@ -63,7 +63,8 @@ if (Test-Path -LiteralPath $shortcut) {
 # 4. Start-up entries, if anything ever created one.
 foreach ($key in 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run',
                  'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run') {
-    if (Get-ItemProperty -LiteralPath $key -Name 'WinDictate' -ErrorAction SilentlyContinue) {
+    # Test-Path and the key's own list of values never raise an error when nothing is there.
+    if ((Test-Path -LiteralPath $key) -and ((Get-Item -LiteralPath $key).GetValueNames() -contains 'WinDictate')) {
         Remove-ItemProperty -LiteralPath $key -Name 'WinDictate'
         $removed.Add("start-up entry $key\WinDictate")
     }
@@ -85,7 +86,8 @@ if ($removed.Count -eq 0) { Write-Output "$productName was not installed for thi
 else { $removed | ForEach-Object { Write-Output "Removed $_" } }
 
 # Confirm nothing is left behind.
-$left = @($Destination, $shortcut) + $(if (-not $KeepUserData) { @($data) } else { @() }) |
-    Where-Object { Test-Path -LiteralPath $_ }
+$mustBeGone = @($Destination, $shortcut)
+if (-not $KeepUserData) { $mustBeGone += $data }
+$left = @($mustBeGone | Where-Object { Test-Path -LiteralPath $_ })
 if ($left.Count -gt 0) { throw "Still present after uninstall: $($left -join ', ')" }
 Write-Output 'Uninstall complete. No audio or transcript files exist to remove: WinDictate never writes them.'
